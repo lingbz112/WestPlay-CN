@@ -227,7 +227,13 @@ window.westplayCabSound = (media, say, state = {}) => {
     audio.nodes = [];
     audio.meters = null;
     audio.wired = speakers;
-    const keep = (node) => (audio.nodes.push(node), node);
+    const keep = (node) => {
+      // qq_music.js watches nodes joining the page's destination to find QMA's output. Never mistake this
+      // sound-field chain for a new player output when it joins that destination itself.
+      node.__westplayCabSoundNode = true;
+      audio.nodes.push(node);
+      return node;
+    };
     // First of all, the tone.
     const bands = TONE.map(([, options]) =>
       keep(new BiquadFilterNode(context, options)),

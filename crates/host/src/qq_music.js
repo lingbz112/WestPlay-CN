@@ -62,8 +62,9 @@
     },
   });
 
-  // QMA (QQ's audio engine) renders into Web Audio and joins its master gain to the destination. Remember
-  // that node before the page's player starts, so cab_sound.js can put the truck's speakers after it.
+  // QMA (QQ's audio engine) renders into Web Audio and joins its current output node to the destination.
+  // Remember the newest one: songs and server-controlled radio routes can replace it without replacing the
+  // page or its AudioContext.
   const qmaOutput = { node: null, context: null };
   window.__westplayQmaOutput = qmaOutput;
   try {
@@ -71,12 +72,14 @@
     AudioNode.prototype.connect = function (destination, ...rest) {
       if (
         destination === this.context?.destination &&
-        this instanceof GainNode &&
-        (!qmaOutput.node || qmaOutput.context !== this.context)
+        !this.__westplayCabSoundNode &&
+        qmaOutput.node !== this
       ) {
         qmaOutput.node = this;
         qmaOutput.context = this.context;
-        post({ log: "QMA audio output found" });
+        post({
+          log: `QMA audio output found (${this.constructor?.name || "AudioNode"})`,
+        });
       }
       return connect.call(this, destination, ...rest);
     };
@@ -1786,13 +1789,17 @@
   const attach = () => {
     const qma = () => window.__westplayQmaOutput?.node ?? null;
     const source = qma() ?? findAudio();
-    if (!source || sound || typeof window.westplayCabSound !== "function")
+    if (!source || typeof window.westplayCabSound !== "function")
       return;
-    sound = window.westplayCabSound(
-      () => qma() ?? findAudio(),
-      (message) => post(message),
-      { playing },
-    );
+    if (!sound) {
+      sound = window.westplayCabSound(
+        () => qma() ?? findAudio(),
+        (message) => post(message),
+        { playing },
+      );
+    } else {
+      sound.tick();
+    }
     if (cab.speakers !== null) sound.speakers(cab.speakers);
     if (cab.head !== null) sound.head(cab.head);
     if (cab.outside !== null)

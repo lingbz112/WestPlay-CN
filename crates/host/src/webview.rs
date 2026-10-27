@@ -33,7 +33,10 @@ use windows::Win32::System::WinRT::{
     CreateDispatcherQueueController, DQTAT_COM_STA, DQTYPE_THREAD_CURRENT, DispatcherQueueOptions,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
-use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, WINDOW_EX_STYLE, WS_OVERLAPPEDWINDOW};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DestroyWindow, SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_OVERLAPPEDWINDOW,
+};
 use windows::core::{HSTRING, Interface, PCWSTR, PWSTR, w};
 use windows_numerics::Vector2;
 
@@ -211,7 +214,7 @@ impl OffscreenWebView {
         // SAFETY: a window of the system's own `STATIC` class, its strings static; no parent or menu.
         let host = unsafe {
             CreateWindowExW(
-                WINDOW_EX_STYLE(0),
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 w!("STATIC"),
                 w!("westplay-offscreen-host"),
                 WS_OVERLAPPEDWINDOW,
@@ -225,6 +228,13 @@ impl OffscreenWebView {
                 None,
             )?
         };
+        // NVIDIA's overlay and Windows' own desktop capture should see the game and the cabin page's captured
+        // frame, never these hidden WebView hosts as separate full-screen application windows. Tool-window and
+        // no-activate styles also keep a page loading from taking focus from the game.
+        // SAFETY: `host` was just created by this process; display affinity is only a capture policy.
+        unsafe {
+            let _ = SetWindowDisplayAffinity(host, WDA_EXCLUDEFROMCAPTURE);
+        }
         // The page takes input only from WestPlay (`send_mouse`). Disabled, the window and the WebView's own
         // windows inside it get none of the real mouse: otherwise, once a click makes the WebView capture the
         // mouse, the player's real clicks and the real cursor (wherever the game parked it) reach the page too.

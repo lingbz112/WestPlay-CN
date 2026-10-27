@@ -1793,6 +1793,7 @@
     spectrum: false,
   };
   let sound = null;
+  let saidNativeRadio = false;
   let radioFrame = null;
   const tellRadio = (message) => {
     if (role === "player" && radioFrame)
@@ -1811,6 +1812,16 @@
   };
   const attach = () => {
     const qma = () => window.__westplayQmaOutput?.node ?? null;
+    // Radio's media element is cross-origin and has no QMA node. Routing it through
+    // `createMediaElementSource` makes Chromium output silence when CORS does not permit the media
+    // stream. Leave this route native so it remains audible.
+    if (location.pathname.includes("player_radio") && !qma()) {
+      if (!saidNativeRadio) {
+        saidNativeRadio = true;
+        post({ log: "radio media is playing natively (cross-origin Web Audio is muted)" });
+      }
+      return;
+    }
     const source = qma() ?? findAudio();
     if (!source || typeof window.westplayCabSound !== "function")
       return;

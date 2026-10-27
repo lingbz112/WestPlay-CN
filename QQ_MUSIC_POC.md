@@ -44,8 +44,13 @@ profile then gives the queue to the player page.
   - The player page returns the current track's name, artist, cover and duration.
 - The queue handoff works: a song page writes QQ Music's own `playSongData`, and the separate player page
   reads it and shows the same song.
-- Not tested here: actual authenticated audio. That needs your QQ Music account and cannot be verified
-  without signing in.
+- Signed-in playback works in the Codex in-app browser: “再回首” advanced from 00:04 to 00:11; pause froze
+  at 00:09 and resume continued; seeking jumped to 02:08.
+- A playlist queued six playable songs; Next switched from “Morning Mood” to “Death of Åse”.
+- Signed-in search for “周杰伦” returned ten song rows with title, artist, duration and song ids.
+- Not tested in the real ETS2 host: the same authenticated path through WestPlay's WebView2 profile. The
+  site behavior and the adapter's DOM mapping were tested in the in-app browser; the game host still needs
+  its own sign-in and an in-game pass.
 
 ## Known limitations
 
@@ -56,9 +61,10 @@ profile then gives the queue to the player page.
 - The server-rendered playlist page exposes only its first page of tracks (8 in the tested playlist). Loading
   the rest needs QQ Music's signed client requests; that is the next piece to add if full long playlists are
   required.
-- QQ Music's web player may not expose an `HTMLAudioElement` in every playback mode. When it does,
-  `cab_sound.js` gives the song the truck's speakers and spectrum; when it doesn't, the controls still work
-  but the spatial audio is skipped.
+- QQ Music's signed-in web player did not expose an `HTMLAudioElement` in the tested mode. It plays through
+  its own engine, and the page's time/controls work, but `cab_sound.js` has no media element to attach to:
+  the truck-speaker spatial audio and spectrum are skipped. Adding that needs an audio-capture route (for
+  example Web Audio interception or system loopback), not just another DOM selector.
 - Two hidden WebView2 pages are used for QQ Music (browse and player), so it costs more memory than a single
   page. That is the price of searching without stopping playback.
 - QQ Music changes its DOM; the selectors in `qq_music.js` are intentionally broad but will need maintenance.

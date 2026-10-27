@@ -109,7 +109,10 @@
     const card = anchor.closest('li, .mod_cover, [class*="card"], [class*="item"]') ?? anchor.parentElement
     const name = norm(anchor.getAttribute('title') || anchor.textContent)
     if (!name) return null
-    const by = norm(one('a[href*="/singer/"]', card)?.textContent)
+    const by = all('a[href*="/singer/"]', card)
+      .map((artist) => norm(artist.textContent))
+      .filter(Boolean)
+      .join(' / ')
     return {
       id: `qq:${kind}:${id}`,
       kind,
@@ -127,13 +130,14 @@
     const anchor = one('a[href*="/songDetail/"]', row)
     const id = idOf(anchor?.getAttribute('href'), 'track')
     if (!id) return null
-    const artistAnchor = one('a[href*="/singer/"]', row)
+    const artistAnchors = all('a[href*="/singer/"]', row)
+    const artistAnchor = artistAnchors[0]
     const albumAnchor = one('a[href*="/albumDetail/"]', row)
     const time = one('[class*="time"], .songlist__time', row)?.textContent
     return {
       id: `qq:track:${id}`,
       name: norm(anchor.getAttribute('title') || anchor.textContent),
-      artist: norm(artistAnchor?.textContent),
+      artist: artistAnchors.map((artist) => norm(artist.textContent)).filter(Boolean).join(' / '),
       album: norm(albumAnchor?.textContent),
       albumId: albumAnchor ? `qq:album:${idOf(albumAnchor.getAttribute('href'), 'album')}` : null,
       artistId: artistAnchor ? `qq:artist:${idOf(artistAnchor.getAttribute('href'), 'artist')}` : null,
@@ -583,6 +587,7 @@
     return {
       title: norm(titleLink?.textContent ?? title),
       artist: norm(artistLink?.textContent ?? artist),
+      text,
       href: titleLink?.getAttribute('href') ?? '',
     }
   }
@@ -594,6 +599,7 @@
     const mid = idOf(info.href, 'track')
     const rows = tracks()
     const current =
+      rows.find((row) => norm(info.text).startsWith(norm(row.name))) ??
       rows.find((row) => norm(row.name) === norm(info.title) && norm(row.artist) === norm(info.artist)) ??
       rows.find((row) => norm(row.name) === norm(info.title)) ??
       null

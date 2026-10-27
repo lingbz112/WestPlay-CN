@@ -937,6 +937,7 @@ export const STRINGS: Record<Language, Strings> = {
     apps: {
       maps: 'Maps',
       music: 'Music',
+      qqMusic: 'QQ Music',
       spotify: 'Spotify',
       youtube: 'YouTube',
       youtubeMusic: 'YouTube Music',
@@ -1422,6 +1423,7 @@ export const STRINGS: Record<Language, Strings> = {
     apps: {
       maps: 'Haritalar',
       music: 'Müzik',
+      qqMusic: 'QQ Music',
       spotify: 'Spotify',
       youtube: 'YouTube',
       youtubeMusic: 'YouTube Music',

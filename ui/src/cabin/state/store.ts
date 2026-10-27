@@ -23,6 +23,11 @@ import {
   useAppleMusic,
 } from '../apps/music/appleMusic'
 import {
+  receiveAnswer as receiveQqMusicAnswer,
+  receivePlayback as receiveQqMusicPlayback,
+  useQqMusic,
+} from '../apps/qqMusic/qqMusic'
+import {
   receiveAnswer as receiveSpotifyAnswer,
   receivePlayback,
   receiveState as receiveSpotifyState,
@@ -536,6 +541,20 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
         break
       case 'appleMusicPlayback':
         receiveAppleMusicPlayback(message.playback)
+        break
+      case 'qqMusic':
+        useQqMusic.setState({
+          signedIn: message.signedIn,
+          playing: message.playing,
+          signingIn: message.signingIn,
+          avatar: message.avatar,
+        })
+        break
+      case 'qqMusicAnswer':
+        receiveQqMusicAnswer(message)
+        break
+      case 'qqMusicPlayback':
+        receiveQqMusicPlayback(message.playback)
         break
       case 'youtubeMusic':
         receiveYouTubeMusicState(message)

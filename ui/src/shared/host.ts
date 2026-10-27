@@ -207,6 +207,19 @@ export type HostMessage =
   | ({ type: 'appleMusicAnswer'; id: number; failed?: boolean } & Partial<AppleMusicAnswers>)
   /** What Apple Music plays; `null`: nothing. */
   | { type: 'appleMusicPlayback'; playback: AppleMusicPlayback | null }
+  /** QQ Music's web player: whether it's signed in and playing (`null`: not running), and whether its
+   * sign-in window is open on the PC. */
+  | {
+      type: 'qqMusic'
+      signedIn: boolean | null
+      playing: boolean | null
+      signingIn: boolean
+      avatar: string | null
+    }
+  /** QQ Music's answer to the copied Music app's question `id` (`failed`: it didn't answer). */
+  | ({ type: 'qqMusicAnswer'; id: number; failed?: boolean } & Partial<AppleMusicAnswers>)
+  /** What QQ Music plays; `null`: nothing. */
+  | { type: 'qqMusicPlayback'; playback: AppleMusicPlayback | null }
   /** YouTube Music's web player: whether it's signed in and playing (`null`: not running), whether its sign-in
    * window is open on the PC, and the account's picture (Google's). YouTube's sign-in: they share it. */
   | {
@@ -296,6 +309,8 @@ export type PageMessage =
   | { type: 'spotify'; command: SpotifyCommand }
   /** A command for Apple Music's web player (`westplay_host::apple_music::Command`). */
   | { type: 'appleMusic'; command: AppleMusicCommand }
+  /** A command for QQ Music's web player (`westplay_host::qq_music::Command`). */
+  | { type: 'qqMusic'; command: AppleMusicCommand }
   /** A command for YouTube Music's web player (`westplay_host::youtube_music::Command`). */
   | { type: 'youtubeMusic'; command: YouTubeMusicCommand }
 

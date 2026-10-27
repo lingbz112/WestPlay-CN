@@ -98,6 +98,15 @@ pub const APPLE_MUSIC: Site = Site {
     not_yet: None,
     page_says: Some(include_str!("apple_music_sign_in.js")),
 };
+
+/// QQ Music's sign-in: its own log-in dialog on y.qq.com, opened by `qq_music_sign_in.js`.
+pub const QQ_MUSIC: Site = Site {
+    sign_in: "https://y.qq.com/",
+    title: "Sign in to QQ Music - WestPlay",
+    home: "https://y.qq.com/",
+    not_yet: None,
+    page_says: Some(include_str!("qq_music_sign_in.js")),
+};
 const CLASS: windows::core::PCWSTR = w!("WestPlaySignIn");
 const SIZE: (i32, i32) = (520, 760);
 /// Windows' message for the mouse leaving a window that asked to be told (its value, from WinUser.h).

@@ -564,12 +564,26 @@ impl OffscreenWebView {
         let script = HSTRING::from(script);
         let created = FrameCreatedEventHandler::create(Box::new(move |_webview, args| {
             let Some(frame) = args.and_then(|args| unsafe { args.Frame().ok() }) else { return Ok(()) };
+            let name = unsafe {
+                let mut value = PWSTR::null();
+                frame.Name(&mut value)?;
+                CoTaskMemPWSTR::from(value).to_string()
+            };
+            log!("WebView frame created: {name}");
             let Some(frame) = frame.cast::<ICoreWebView2Frame2>().ok() else { return Ok(()) };
             let script = script.clone();
             let loading_frame = frame.clone();
             let loading_script = script.clone();
+            let loading_name = name.clone();
             let loading = FrameContentLoadingEventHandler::create(Box::new(move |_frame, _args| {
-                let done = ExecuteScriptCompletedHandler::create(Box::new(|_error, _result| Ok(())));
+                let script_name = loading_name.clone();
+                let done = ExecuteScriptCompletedHandler::create(Box::new(move |error, result| {
+                    match error {
+                        Ok(()) => log!("WebView frame content script ({script_name}): {result}"),
+                        Err(error) => log!("WebView frame content script ({script_name}) failed: {error}"),
+                    }
+                    Ok(())
+                }));
                 // SAFETY: the frame is live, and the script and handler live through the asynchronous call;
                 // WebView2 keeps its own reference to the handler.
                 unsafe { loading_frame.ExecuteScript(&loading_script, &done)? };
@@ -582,8 +596,16 @@ impl OffscreenWebView {
             // case the engine replaced that document's context; the injected script guards against running
             // twice in the same document.
             let loaded_frame = frame.clone();
+            let loaded_name = name.clone();
             let loaded = FrameDOMContentLoadedEventHandler::create(Box::new(move |_frame, _args| {
-                let done = ExecuteScriptCompletedHandler::create(Box::new(|_error, _result| Ok(())));
+                let script_name = loaded_name.clone();
+                let done = ExecuteScriptCompletedHandler::create(Box::new(move |error, result| {
+                    match error {
+                        Ok(()) => log!("WebView frame DOM script ({script_name}): {result}"),
+                        Err(error) => log!("WebView frame DOM script ({script_name}) failed: {error}"),
+                    }
+                    Ok(())
+                }));
                 // SAFETY: as above.
                 unsafe { loaded_frame.ExecuteScript(&script, &done)? };
                 Ok(())

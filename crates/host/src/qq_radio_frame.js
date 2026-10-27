@@ -2,9 +2,10 @@
 // script into that frame, where the top document cannot reach its AudioContext. The script joins QMA's
 // output to the cab sound field and relays the cab's speakers and driver through the parent page.
 (() => {
-  if (window.top === window) return;
-  if (!/(^|\.)u\.y\.qq\.com$/.test(location.hostname)) return;
-  if (window.__westplayRadioFrameStarted) return;
+  if (window.top === window) return "top";
+  if (!/(^|\.)u\.y\.qq\.com$/.test(location.hostname))
+    return `other frame: ${location.hostname}`;
+  if (window.__westplayRadioFrameStarted) return "already started";
   window.__westplayRadioFrameStarted = true;
 
   const tellTop = (message) =>
@@ -106,4 +107,5 @@
 
   tellTop({ ready: true });
   setInterval(attach, 500);
+  return "started";
 })();

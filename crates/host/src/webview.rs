@@ -556,7 +556,10 @@ impl OffscreenWebView {
     /// Music's radio engine) cannot be reached from the top page's JavaScript, but WebView2 can execute in
     /// the frame itself.
     pub fn add_frame_script(&self, script: &str) -> Result<(), Error> {
-        use webview2_com::{ExecuteScriptCompletedHandler, FrameContentLoadingEventHandler, FrameCreatedEventHandler};
+        use webview2_com::{
+            ExecuteScriptCompletedHandler, FrameContentLoadingEventHandler, FrameCreatedEventHandler,
+            FrameDOMContentLoadedEventHandler,
+        };
         let webview: ICoreWebView2_4 = self.webview.cast()?;
         let script = HSTRING::from(script);
         let created = FrameCreatedEventHandler::create(Box::new(move |_webview, args| {
@@ -564,16 +567,30 @@ impl OffscreenWebView {
             let Some(frame) = frame.cast::<ICoreWebView2Frame2>().ok() else { return Ok(()) };
             let script = script.clone();
             let loading_frame = frame.clone();
+            let loading_script = script.clone();
             let loading = FrameContentLoadingEventHandler::create(Box::new(move |_frame, _args| {
                 let done = ExecuteScriptCompletedHandler::create(Box::new(|_error, _result| Ok(())));
                 // SAFETY: the frame is live, and the script and handler live through the asynchronous call;
                 // WebView2 keeps its own reference to the handler.
-                unsafe { loading_frame.ExecuteScript(&script, &done)? };
+                unsafe { loading_frame.ExecuteScript(&loading_script, &done)? };
                 Ok(())
             }));
             let mut loading_token = 0;
             // SAFETY: both are live for the call; the frame keeps its own reference to the handler.
             unsafe { frame.add_ContentLoading(&loading, &mut loading_token)? };
+            // ContentLoading normally runs before the site's audio engine. Repeat at DOMContentLoaded in
+            // case the engine replaced that document's context; the injected script guards against running
+            // twice in the same document.
+            let loaded_frame = frame.clone();
+            let loaded = FrameDOMContentLoadedEventHandler::create(Box::new(move |_frame, _args| {
+                let done = ExecuteScriptCompletedHandler::create(Box::new(|_error, _result| Ok(())));
+                // SAFETY: as above.
+                unsafe { loaded_frame.ExecuteScript(&script, &done)? };
+                Ok(())
+            }));
+            let mut loaded_token = 0;
+            // SAFETY: both are live for the call; the frame keeps its own reference to the handler.
+            unsafe { frame.add_DOMContentLoaded(&loaded, &mut loaded_token)? };
             Ok(())
         }));
         let mut created_token = 0;

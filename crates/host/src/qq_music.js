@@ -1803,7 +1803,7 @@
     if (role === "player" && radioFrame)
       radioFrame.postMessage(
         { __westplayRadioCab: true, message },
-        "https://u.y.qq.com",
+        "*",
       );
   };
   const tellRadioCab = () => {
@@ -1864,13 +1864,19 @@
   };
 
   // --- Messages ---------------------------------------------------------------------------------------------
-  window.addEventListener("message", ({ data, origin, source }) => {
-    if (origin !== "https://u.y.qq.com" || !data?.__westplayRadioFrame) return;
-    radioFrame = source;
-    if (data.ready) tellRadioCab();
-    if (data.log) post({ log: `[radio frame] ${data.log}` });
-    if (Array.isArray(data.spectrum)) post({ spectrum: data.spectrum });
-  });
+  window.addEventListener(
+    "message",
+    ({ data, origin, source }) => {
+      if (!data?.__westplayRadioFrame) return;
+      radioFrame = source;
+      if (data.ready) tellRadioCab();
+      if (data.log)
+        post({ log: `[radio frame ${origin || "opaque"}] ${data.log}` });
+      if (Array.isArray(data.spectrum)) post({ spectrum: data.spectrum });
+    },
+    true,
+  );
+  if (role === "player") post({ log: "radio frame message bridge ready" });
   window.chrome?.webview?.addEventListener("message", ({ data }) => {
     if (!data) return;
     if (CAB[data.action]) return CAB[data.action](data);

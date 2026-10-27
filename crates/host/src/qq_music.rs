@@ -22,7 +22,7 @@ pub use crate::apple_music::Command;
 use crate::apple_music::{Answer, Playback, State};
 use crate::signin::{self, Confirming, Progress, SignInWindow};
 use crate::speakers::{self, Equalizer, Head, Speaker};
-use crate::webview::{self, OffscreenWebView, Stage};
+use crate::webview::{self, HiddenWebView, Stage};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN, COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
     COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE, COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON,
@@ -117,8 +117,8 @@ pub enum Report {
 }
 
 pub struct QqMusic {
-    browse: OffscreenWebView,
-    player: OffscreenWebView,
+    browse: HiddenWebView,
+    player: HiddenWebView,
     sign_in: RefCell<Option<SignInWindow>>,
     confirming: Confirming,
     pending: RefCell<Vec<Report>>,
@@ -137,11 +137,10 @@ pub struct QqMusic {
 }
 
 impl QqMusic {
-    pub fn start(stage: &Stage, width: u32, height: u32, user_data: &Path) -> Result<Self, webview::Error> {
-        let browse = OffscreenWebView::new(stage, width, height, user_data)?;
+    pub fn start(_stage: &Stage, width: u32, height: u32, user_data: &Path) -> Result<Self, webview::Error> {
+        let browse = HiddenWebView::new(width, height, user_data)?;
         browse.log_as("qq music browse")?;
         browse.show(false)?;
-        stage.add(&browse, false)?;
         browse.add_startup_script(concat!(
             "window.__westplayRole='browse';\n",
             include_str!("cab_sound.js"),
@@ -152,10 +151,9 @@ impl QqMusic {
 
         // One environment for both pages: they share QQ Music's profile, cookies and login. A second
         // environment on the same profile is refused by WebView2 (ERROR_INVALID_STATE).
-        let player = OffscreenWebView::with_environment(stage, width, height, browse.environment().clone())?;
+        let player = HiddenWebView::with_environment(width, height, browse.environment().clone())?;
         player.log_as("qq music player")?;
         player.show(false)?;
-        stage.add(&player, false)?;
         player.add_startup_script(concat!(
             "window.__westplayRole='player';\n",
             include_str!("cab_sound.js"),
@@ -528,9 +526,8 @@ impl QqMusic {
         self.browse.take_failure().is_some() || self.player.take_failure().is_some()
     }
 
-    pub fn close(self, stage: &Stage) {
-        let _ = stage.remove(&self.browse);
-        let _ = stage.remove(&self.player);
+    pub fn close(self, _stage: &Stage) {
+        // HiddenWebViews are not part of the composition Stage.
     }
 }
 

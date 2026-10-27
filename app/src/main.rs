@@ -44,6 +44,8 @@ struct SettingsStore {
 /// The companion window starts hidden and shows once its page has drawn its first screen
 /// (`companion_ready`), so it never shows blank while the page loads; after this long it shows anyway.
 const SHOW_ANYWAY: Duration = Duration::from_secs(8);
+/// How long the app waits for the WebView2 host to tear down before leaving it behind and exiting.
+const HOST_STOP_GRACE: Duration = Duration::from_secs(5);
 
 /// The companion's page has drawn its first screen: the window shows.
 #[tauri::command]
@@ -251,10 +253,12 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("failed to build the WestPlay app");
 
-    app.run(|app, event| {
-        if let RunEvent::Exit = event {
+    app.run(|app, event| match event {
+        RunEvent::Exit => stop_host(app),
+        RunEvent::WindowEvent { label, event: tauri::WindowEvent::CloseRequested { .. }, .. } if label == "main" => {
             stop_host(app);
         }
+        _ => {}
     });
 }
 
@@ -265,7 +269,18 @@ fn stop_host(app: &AppHandle) {
         let mut host = host.lock().unwrap_or_else(|e| e.into_inner());
         host.stop.store(true, Ordering::Relaxed);
         if let Some(thread) = host.thread.take() {
-            let _ = thread.join();
+            // WebView2 teardown can occasionally wait forever while the game and a capture overlay are also
+            // shutting down. The game already treats the host as gone once its heartbeat stops, so a bounded
+            // wait keeps the visible app from remaining as an unclosable background instance.
+            let deadline = Instant::now() + HOST_STOP_GRACE;
+            while !thread.is_finished() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            if thread.is_finished() {
+                let _ = thread.join();
+            } else {
+                westplay_host::log!("[shutdown] the WebView2 host didn't stop within five seconds; exiting");
+            }
         }
     }
 }

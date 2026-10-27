@@ -7,12 +7,23 @@
  * light look, on WestPlay's dark card in the dark look).
  */
 export type AppIconRole =
-  'maps' | 'music' | 'spotify' | 'podcasts' | 'messages' | 'phone' | 'settings' | 'weather' | 'youtube' | 'youtubeMusic'
+  | 'maps'
+  | 'music'
+  | 'qqMusic'
+  | 'spotify'
+  | 'podcasts'
+  | 'messages'
+  | 'phone'
+  | 'settings'
+  | 'weather'
+  | 'youtube'
+  | 'youtubeMusic'
 
 /** Each role's files' name. */
 const FILES: Record<AppIconRole, string> = {
   maps: 'maps',
   music: 'music',
+  qqMusic: 'qq-music',
   spotify: 'spotify',
   podcasts: 'podcasts',
   messages: 'messages',
@@ -25,5 +36,6 @@ const FILES: Record<AppIconRole, string> = {
 
 /** WestPlay's own icon for `role`, for a light or a dark screen. */
 export function appIcon(role: AppIconRole, look: 'light' | 'dark' = 'light'): string {
+  if (role === 'qqMusic') return `/icons/westplay/qq-music-official.${look}.webp`
   return `/icons/westplay/${FILES[role]}.${look}.svg`
 }

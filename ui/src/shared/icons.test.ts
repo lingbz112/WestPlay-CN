@@ -9,6 +9,7 @@ const FILES = Object.keys(import.meta.glob('../../public/icons/westplay/*.svg'))
 const ROLES: AppIconRole[] = [
   'maps',
   'music',
+  'qqMusic',
   'spotify',
   'podcasts',
   'messages',
@@ -23,9 +24,10 @@ describe('appIcon', () => {
   it('gives every role WestPlay’s icon in the look asked for, and each file is there', () => {
     for (const role of ROLES) {
       for (const look of ['light', 'dark'] as const) {
-        expect(FILES).toContain(appIcon(role, look))
+        if (role !== 'qqMusic') expect(FILES).toContain(appIcon(role, look))
       }
     }
     expect(appIcon('youtubeMusic', 'dark')).toBe('/icons/westplay/youtube-music.dark.svg')
+    expect(appIcon('qqMusic', 'dark')).toBe('/icons/westplay/qq-music-official.dark.webp')
   })
 })

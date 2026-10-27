@@ -418,7 +418,9 @@ unsafe fn refresh(context: &ID3D11DeviceContext, texture: ID3D11Texture2D, heigh
             log!("screen: {} isn't WestPlay's in {truck}, the game's own shows", screen_layouts()[layout].id);
         }
         // This screen WestPlay's itself: the truck's own, beside the tablet, keeps the game's.
-        let enabled = here && bridge::get().is_some_and(|b| b.host.screen_enabled.load(Ordering::Acquire) == 1);
+        let enabled = here
+            && bridge::host_alive()
+            && bridge::get().is_some_and(|b| b.host.screen_enabled.load(Ordering::Acquire) == 1);
         let latest = if enabled { state.frames.update(&device, context) } else { None };
         match latest {
             Some((latest, version)) => {
@@ -428,7 +430,10 @@ unsafe fn refresh(context: &ID3D11DeviceContext, texture: ID3D11Texture2D, heigh
                 }
             }
             None => {
-                if screen.version != TRANSPARENT {
+                // Alt-tabbing and capture overlays can leave the shared frame unavailable for a while even
+                // though the host is alive. Keep the last picture for as long as the host asks us to draw;
+                // a stopped, crashed, disabled or replaced host still blanks the screen.
+                if !enabled && screen.version != TRANSPARENT {
                     if state.transparent.is_none() {
                         state.transparent = create_transparent(&device);
                     }

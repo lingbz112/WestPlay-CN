@@ -694,4 +694,58 @@ mod tests {
         assert_eq!(playback["type"], "qqMusicPlayback");
         assert!(playback["playback"].is_null());
     }
+
+    /// The first Home answer is already complete: QQ's lazy images and webpack APIs don't need a second visit.
+    #[test]
+    #[ignore = "loads QQ Music in WebView2"]
+    fn the_first_home_answer_has_real_covers() {
+        use std::time::{Duration, Instant};
+        use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+
+        // SAFETY: COM on this test's own thread, once, before anything uses it.
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok().unwrap() };
+        let profile = std::env::temp_dir().join(format!("westplay-qq-home-covers-{}", std::process::id()));
+        let stage = Stage::new(1280, 720).unwrap();
+        let music = QqMusic::start(&stage, 1280, 720, &profile).unwrap();
+        music.command(&Command::Ask { id: 1, question: crate::apple_music::Question::Home }).unwrap();
+
+        let mut answer = None;
+        let until = Instant::now() + Duration::from_secs(45);
+        while Instant::now() < until && answer.is_none() {
+            crate::pump_messages();
+            for report in music.take_reports() {
+                if let Report::Answer(reply) = report {
+                    if reply.answer == 1 {
+                        answer = Some(reply);
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let answer = answer.expect("Home wasn't answered");
+        assert!(!answer.failed, "Home failed");
+        let page = answer.home.expect("a Home page");
+        let missing: Vec<(String, Option<String>)> = page
+            .sections
+            .into_iter()
+            .flat_map(|section| {
+                section
+                    .items
+                    .into_iter()
+                    .map(|item| (item.name, item.image))
+                    .chain(section.songs.into_iter().map(|song| (song.name, song.image)))
+            })
+            .filter(|(_, image)| {
+                image.as_deref().is_none_or(|image| {
+                    image.contains("mediastyle/global/img/album_300")
+                        || image.contains("blank.gif")
+                        || image.contains("transparent.gif")
+                })
+            })
+            .collect();
+        println!("first Home covers missing: {missing:?}");
+        assert!(missing.is_empty(), "the first Home answer still had missing covers: {missing:?}");
+        music.close(&stage);
+        let _ = std::fs::remove_dir_all(profile);
+    }
 }

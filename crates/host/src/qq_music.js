@@ -143,10 +143,19 @@
     }
     return null;
   };
-  const qqApi = async (module) => {
+  const qqApi = async (module, usable = (api) => api) => {
     const require = await waitFor(() => window.__westplayRequire);
     if (!require) throw new Error("QQ Music API is not ready");
-    return require(module);
+    const api = await waitFor(() => {
+      try {
+        const value = require(module);
+        return usable(value) ? value : null;
+      } catch {
+        return null;
+      }
+    });
+    if (!api) throw new Error(`QQ Music API ${module} is not ready`);
+    return api;
   };
   const within = (promise, milliseconds, message) =>
     Promise.race([
@@ -155,10 +164,14 @@
         setTimeout(() => reject(new Error(message)), milliseconds),
       ),
     ]);
-  const reportApi = async () => qqApi(467);
-  const tracksApi = async () => qqApi(449);
+  const reportApi = async () =>
+    qqApi(467, (api) => typeof api?.f === "function");
+  const tracksApi = async () =>
+    qqApi(449, (api) => typeof api?.m === "function");
   const requestApi = async () => {
-    const api = (await qqApi(8)).j();
+    const api = (
+      await qqApi(8, (value) => typeof value?.j === "function")
+    ).j();
     return (...args) => api.request(...args);
   };
 
@@ -245,14 +258,31 @@
   const imageOf = (root) => {
     const image = one("img", root);
     if (!image) return null;
+    const srcset =
+      image.getAttribute("srcset") ||
+      image.getAttribute("data-srcset") ||
+      "";
     const candidates = [
       image.currentSrc,
       image.src,
+      image.getAttribute("data-original"),
+      image.getAttribute("data-origin"),
+      image.getAttribute("data-lazy-src"),
       image.getAttribute("data-src"),
       image.getAttribute("data-qar-def"),
+      srcset
+        .split(",")
+        .map((part) => part.trim().split(/\s+/)[0])
+        .filter(Boolean)[0],
     ];
     for (const candidate of candidates) {
       if (!candidate || candidate.startsWith("data:")) continue;
+      if (
+        /mediastyle\/global\/img\/album_300|(?:blank|transparent)\.gif|no[_-]?cover/i.test(
+          candidate,
+        )
+      )
+        continue;
       try {
         return new URL(candidate, location.href).href;
       } catch {}
@@ -270,6 +300,7 @@
             : /playlist\/([^/?#]+)/;
     return pattern.exec(String(href ?? ""))?.[1] ?? null;
   };
+  const coverCache = new Map();
   const itemOf = (anchor, kind) => {
     const id = idOf(anchor?.getAttribute("href"), kind);
     if (!id) return null;
@@ -288,7 +319,8 @@
       name,
       by,
       note: "",
-      image: imageOf(card) ?? DEFAULT_IMAGE,
+      image:
+        coverCache.get(`qq:${kind}:${id}`) ?? imageOf(card) ?? DEFAULT_IMAGE,
       wide: null,
       color: COLOR,
       explicit: false,
@@ -317,7 +349,7 @@
       artistId: artistAnchor
         ? `qq:artist:${idOf(artistAnchor.getAttribute("href"), "artist")}`
         : null,
-      image: imageOf(row) ?? DEFAULT_IMAGE,
+      image: coverCache.get(`qq:track:${id}`) ?? imageOf(row) ?? DEFAULT_IMAGE,
       color: COLOR,
       duration: parseTime(time),
       explicit: false,
@@ -359,26 +391,40 @@
     const missing = list
       .filter((item) => missingCover(item.image))
       .slice(0, most);
-    await Promise.all(
-      missing.map(async (item) => {
-        try {
-          const parts = String(item.id).split(":");
-          const kind = parts[1];
-          const id = parts.slice(2).join(":");
-          if (!id || (kind !== "album" && kind !== "playlist")) return;
-          const url =
-            kind === "album"
-              ? `${ORIGIN}/n/ryqq_v2/albumDetail/${id}`
-              : `${ORIGIN}/n/ryqq_v2/playlist/${id}`;
-          const doc = await fetchDoc(url);
-          const node =
-            nodeOf(doc, kind === "album" ? "MusicAlbum" : "MusicPlaylist") ??
-            nodeOf(doc, "MusicPlaylist") ??
-            nodeOf(doc, "MusicAlbum");
-          if (node?.image) item.image = new URL(node.image, location.href).href;
-        } catch {}
-      }),
-    );
+    if (missing.length)
+      post({ log: `item covers missing ${missing.length}/${list.length}` });
+    const fill = (item) => {
+      const parts = String(item.id).split(":");
+      const kind = parts[1];
+      const id = parts.slice(2).join(":");
+      if (!id || (kind !== "album" && kind !== "playlist")) return null;
+      const url =
+        kind === "album"
+          ? `${ORIGIN}/n/ryqq_v2/albumDetail/${id}`
+          : `${ORIGIN}/n/ryqq_v2/playlist/${id}`;
+      return fetchDoc(url).then((doc) => {
+        const node =
+          nodeOf(doc, kind === "album" ? "MusicAlbum" : "MusicPlaylist") ??
+          nodeOf(doc, "MusicPlaylist") ??
+          nodeOf(doc, "MusicAlbum");
+        if (!node?.image) return;
+        item.image = new URL(node.image, location.href).href;
+        coverCache.set(item.id, item.image);
+      });
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await Promise.all(
+        missing
+          .filter((item) => missingCover(item.image))
+          .map((item) => fill(item)?.catch(() => {})),
+      );
+      if (missing.every((item) => !missingCover(item.image))) break;
+      await sleep(250);
+    }
+    if (missing.length)
+      post({
+        log: `item covers done ${missing.filter((item) => !missingCover(item.image)).length}/${missing.length}`,
+      });
     return list;
   };
   const page = (sections) => ({ sections });
@@ -391,19 +437,21 @@
   const emptyPage = () => page([]);
 
   const homePage = async () => {
-    for (
-      let i = 0;
-      i < 40 &&
-      !one(
-        '.playlist__item, .debutlist__item, .songlist__item, .mod_index, [class*="index__"]',
-      );
-      i++
-    ) {
-      await sleep(250);
-    }
-    const playlists = items("playlist").slice(0, 12);
-    const songs = await enrichTracks(tracks().slice(0, 20));
-    const albums = await enrichItems(items("album").slice(0, 8));
+    await waitFor(
+      () =>
+        document.readyState === "complete" &&
+        tracks().length >= 20 &&
+        items("playlist").length > 0 &&
+        items("album").length > 0,
+      12000,
+    );
+    // The last React commit follows `complete`; don't read the half-populated first frame.
+    await sleep(250);
+    const [playlists, songs, albums] = await Promise.all([
+      enrichItems(items("playlist").slice(0, 12), 12),
+      enrichTracks(tracks().slice(0, 20), 20),
+      enrichItems(items("album").slice(0, 8), 8),
+    ]);
     const sections = [];
     if (playlists.length)
       sections.push(section("热门歌单", "shelf", playlists, []));
@@ -630,44 +678,52 @@
    * request. A per-song detail page is only the fallback when that API is temporarily unavailable.
    */
   const enrichTracks = async (list, most = 16) => {
-    const missing = list
-      .filter((track) => missingCover(track.image))
-      .slice(0, most);
+    const targets = list.slice(0, most);
+    const missing = targets.filter((track) => missingCover(track.image));
     if (missing.length)
       post({ log: `covers missing ${missing.length}/${list.length}` });
     const byId = new Map(
-      missing.map((track) => [String(track.id).split(":").pop(), track]),
+      targets.map((track) => [String(track.id).split(":").pop(), track]),
     );
-    try {
-      const api = await tracksApi();
-      const mids = [...byId.keys()];
-      for (let start = 0; start < mids.length; start += 100) {
-        const part = mids.slice(start, start + 100);
-        const raw = await api.m(
-          part,
-          part.map(() => 0),
-        );
-        for (const song of raw ?? []) {
-          const track = byId.get(song?.mid);
-          if (!track) continue;
-          track.image = coverOfSong(song);
-          track.album =
-            norm(song.album?.name ?? song.album?.title) || track.album;
-          track.albumId = song.album?.mid
-            ? `qq:album:${song.album.mid}`
-            : track.albumId;
-          track.artist = artistName(song.singer) || track.artist;
-          track.artistId = song.singer?.[0]?.mid
-            ? `qq:artist:${song.singer[0].mid}`
-            : track.artistId;
-          track.duration = Number(song.interval) || track.duration;
-          if (typeof song.isFan === "boolean") track.favorite = song.isFan;
+    const mids = [...byId.keys()];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const api = await tracksApi();
+        for (let start = 0; start < mids.length; start += 100) {
+          const part = mids.slice(start, start + 100);
+          const raw = await api.m(
+            part,
+            part.map(() => 0),
+          );
+          for (const song of raw ?? []) {
+            const track = byId.get(song?.mid);
+            if (!track) continue;
+            track.image = coverOfSong(song);
+            track.album =
+              norm(song.album?.name ?? song.album?.title) || track.album;
+            track.albumId = song.album?.mid
+              ? `qq:album:${song.album.mid}`
+              : track.albumId;
+            track.artist = artistName(song.singer) || track.artist;
+            track.artistId = song.singer?.[0]?.mid
+              ? `qq:artist:${song.singer[0].mid}`
+              : track.artistId;
+            track.duration = Number(song.interval) || track.duration;
+            if (typeof song.isFan === "boolean") track.favorite = song.isFan;
+            if (!missingCover(track.image))
+              coverCache.set(track.id, track.image);
+          }
         }
+      } catch (error) {
+        if (attempt === 2)
+          post({ log: `track covers API failed: ${error}` });
       }
-    } catch {}
-    const stillMissing = missing.filter((track) => missingCover(track.image));
+      if (!targets.some((track) => missingCover(track.image))) break;
+      await sleep(300 * (attempt + 1));
+    }
+    const stillMissing = targets.filter((track) => missingCover(track.image));
     await Promise.all(
-      stillMissing.slice(0, 4).map(async (track) => {
+      stillMissing.map(async (track) => {
         const mid = String(track.id).split(":").pop();
         if (!mid) return;
         try {
@@ -689,11 +745,15 @@
             if (id) track.artistId = `qq:artist:${id}`;
           }
           if (!track.duration) track.duration = isoDuration(node.duration);
+          if (!missingCover(track.image))
+            coverCache.set(track.id, track.image);
         } catch {}
       }),
     );
     if (missing.length)
-      post({ log: `covers done ${missing.length}/${list.length}` });
+      post({
+        log: `covers done ${targets.filter((track) => !missingCover(track.image)).length}/${targets.length}`,
+      });
     return list;
   };
   const collectionAnswer = async (id) => {
@@ -1186,7 +1246,11 @@
       stations: [],
     };
   };
+  const inFlight = new Set();
   const ask = async (id, question) => {
+    const key = `${id}:${question?.ask ?? ""}`;
+    if (inFlight.has(key)) return;
+    inFlight.add(key);
     try {
       let answer = null;
       switch (question?.ask) {
@@ -1236,6 +1300,8 @@
       if (answer !== null) post({ answer: id, [question.ask]: answer });
     } catch {
       post({ answer: id, failed: true });
+    } finally {
+      inFlight.delete(key);
     }
   };
 

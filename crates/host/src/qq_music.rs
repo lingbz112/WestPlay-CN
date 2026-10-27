@@ -199,6 +199,7 @@ impl QqMusic {
             let message = serde_json::to_string(&Cab::Head { head }).unwrap_or_default();
             told.messages[1] = Some(message.clone());
             self.player.post_json(&message)?;
+            self.tell_frame(&message);
         }
         if told.speakers.as_ref().map(Option::as_deref) != Some(speakers) {
             let speakers = speakers.map(<[_]>::to_vec);
@@ -206,6 +207,7 @@ impl QqMusic {
             let message = serde_json::to_string(&Cab::Speakers { speakers }).unwrap_or_default();
             told.messages[0] = Some(message.clone());
             self.player.post_json(&message)?;
+            self.tell_frame(&message);
         }
         let camera = (outside, if outside { (distance * 4.0).round() / 4.0 } else { 0.0 });
         if told.camera != Some(camera) && camera.1.is_finite() {
@@ -213,20 +215,30 @@ impl QqMusic {
             let message = serde_json::to_string(&Cab::Outside { on: camera.0, distance: camera.1 }).unwrap_or_default();
             told.messages[2] = Some(message.clone());
             self.player.post_json(&message)?;
+            self.tell_frame(&message);
         }
         if told.equalizer != Some(equalizer) {
             told.equalizer = Some(equalizer);
             let message = serde_json::to_string(&Cab::Equalizer { equalizer }).unwrap_or_default();
             told.messages[3] = Some(message.clone());
             self.player.post_json(&message)?;
+            self.tell_frame(&message);
         }
         if told.spectrum != Some(spectrum) {
             told.spectrum = Some(spectrum);
             let message = serde_json::to_string(&Cab::Spectrum { on: spectrum }).unwrap_or_default();
             told.messages[4] = Some(message.clone());
             self.player.post_json(&message)?;
+            self.tell_frame(&message);
         }
         Ok(())
+    }
+
+    /// Delivers a cabin setting straight into QQ's radio frame, without relying on top-level `postMessage`
+    /// (the radio frame is sandboxed and QQ owns the top page's message routing).
+    fn tell_frame(&self, message: &str) {
+        let script = format!("window.__westplayRadioCab?.({message});");
+        let _ = self.player.run_in_frame(&script);
     }
 
     pub fn command(&self, command: &Command) -> windows::core::Result<()> {
@@ -499,6 +511,11 @@ impl QqMusic {
         });
         if self.confirming.ended(signed_in) {
             reports.push(Report::Confirming(false));
+        }
+        if self.player.take_frame_ready() {
+            for message in self.told.borrow().messages.iter().flatten() {
+                self.tell_frame(message);
+            }
         }
         self.restore_if_paused();
         reports

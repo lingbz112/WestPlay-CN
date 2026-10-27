@@ -201,6 +201,10 @@ pub struct OffscreenWebView {
     webview: ICoreWebView2,
     /// JSON messages the page posted (`chrome.webview.postMessage`), until taken by `take_page_messages`.
     page_messages: Rc<RefCell<Vec<String>>>,
+    /// The latest named child frame receiving [`Self::add_frame_script`] (QQ Music's radio engine).
+    frame: Rc<RefCell<Option<ICoreWebView2Frame2>>>,
+    /// A new frame has loaded since the last [`Self::take_frame_ready`].
+    frame_ready: Rc<Cell<bool>>,
     /// The worst process failure since last taken (`take_failure`).
     failure: Rc<Cell<Option<Failure>>>,
     pub version: String,
@@ -337,7 +341,19 @@ impl OffscreenWebView {
         // SAFETY: the handler and the token are locals for the call; WebView2 keeps its own reference to the handler.
         unsafe { webview.add_ProcessFailed(&handler, &mut token)? };
 
-        Ok(Self { environment, root, host, composition, controller, webview, page_messages, failure, version })
+        Ok(Self {
+            environment,
+            root,
+            host,
+            composition,
+            controller,
+            webview,
+            page_messages,
+            frame: Rc::default(),
+            frame_ready: Rc::default(),
+            failure,
+            version,
+        })
     }
 
     /// The worst WebView2 process failure since the last call, if any.
@@ -562,6 +578,8 @@ impl OffscreenWebView {
         };
         let webview: ICoreWebView2_4 = self.webview.cast()?;
         let script = HSTRING::from(script);
+        let saved_frame = self.frame.clone();
+        let frame_ready = self.frame_ready.clone();
         let created = FrameCreatedEventHandler::create(Box::new(move |_webview, args| {
             let Some(frame) = args.and_then(|args| unsafe { args.Frame().ok() }) else { return Ok(()) };
             let name = unsafe {
@@ -571,15 +589,25 @@ impl OffscreenWebView {
             };
             log!("WebView frame created: {name}");
             let Some(frame) = frame.cast::<ICoreWebView2Frame2>().ok() else { return Ok(()) };
+            if name == "uyqqcomproxy" {
+                *saved_frame.borrow_mut() = Some(frame.clone());
+            }
             let script = script.clone();
             let loading_frame = frame.clone();
             let loading_script = script.clone();
             let loading_name = name.clone();
+            let loading_ready = frame_ready.clone();
             let loading = FrameContentLoadingEventHandler::create(Box::new(move |_frame, _args| {
                 let script_name = loading_name.clone();
+                let script_ready = loading_ready.clone();
                 let done = ExecuteScriptCompletedHandler::create(Box::new(move |error, result| {
                     match error {
-                        Ok(()) => log!("WebView frame content script ({script_name}): {result}"),
+                        Ok(()) => {
+                            if script_name == "uyqqcomproxy" {
+                                script_ready.set(true);
+                            }
+                            log!("WebView frame content script ({script_name}): {result}");
+                        }
                         Err(error) => log!("WebView frame content script ({script_name}) failed: {error}"),
                     }
                     Ok(())
@@ -597,11 +625,18 @@ impl OffscreenWebView {
             // twice in the same document.
             let loaded_frame = frame.clone();
             let loaded_name = name.clone();
+            let loaded_ready = frame_ready.clone();
             let loaded = FrameDOMContentLoadedEventHandler::create(Box::new(move |_frame, _args| {
                 let script_name = loaded_name.clone();
+                let script_ready = loaded_ready.clone();
                 let done = ExecuteScriptCompletedHandler::create(Box::new(move |error, result| {
                     match error {
-                        Ok(()) => log!("WebView frame DOM script ({script_name}): {result}"),
+                        Ok(()) => {
+                            if script_name == "uyqqcomproxy" {
+                                script_ready.set(true);
+                            }
+                            log!("WebView frame DOM script ({script_name}): {result}");
+                        }
                         Err(error) => log!("WebView frame DOM script ({script_name}) failed: {error}"),
                     }
                     Ok(())
@@ -619,6 +654,23 @@ impl OffscreenWebView {
         // SAFETY: the WebView is alive as long as `self`; it keeps its own reference to the handler.
         unsafe { webview.add_FrameCreated(&created, &mut created_token)? };
         Ok(())
+    }
+
+    /// Whether a named child frame has loaded since the last call.
+    pub fn take_frame_ready(&self) -> bool {
+        self.frame_ready.replace(false)
+    }
+
+    /// Runs `script` in the latest named child frame. Returns `false` before that frame exists.
+    pub fn run_in_frame(&self, script: &str) -> windows::core::Result<bool> {
+        use webview2_com::ExecuteScriptCompletedHandler;
+        let frame = self.frame.borrow().clone();
+        let Some(frame) = frame else { return Ok(false) };
+        let done = ExecuteScriptCompletedHandler::create(Box::new(|_error, _result| Ok(())));
+        // SAFETY: the frame is the one WebView2 reported for this WebView, and the script and handler are
+        // alive through the asynchronous call.
+        unsafe { frame.ExecuteScript(&HSTRING::from(script), &done)? };
+        Ok(true)
     }
 
     /// Tests: the page's picture, as WebView2 draws it, written to `path` as a PNG (to see what a page shows).

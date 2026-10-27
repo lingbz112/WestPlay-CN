@@ -10,6 +10,16 @@
 
   const tellTop = (message) =>
     window.top.postMessage({ __westplayRadioFrame: true, ...message }, "*");
+  const tell = (message) => {
+    try {
+      window.chrome?.webview?.postMessage({
+        role: "player",
+        __westplayRadioFrame: true,
+        ...message,
+      });
+    } catch {}
+    tellTop(message);
+  };
   const qmaOutput = { node: null, context: null };
   try {
     const connect = AudioNode.prototype.connect;
@@ -21,14 +31,14 @@
       ) {
         qmaOutput.node = this;
         qmaOutput.context = this.context;
-        tellTop({
+        tell({
           log: `QMA radio output found (${this.constructor?.name || "AudioNode"})`,
         });
       }
       return connect.call(this, destination, ...rest);
     };
   } catch (error) {
-    tellTop({ log: `QMA radio output hook failed: ${error}` });
+    tell({ log: `QMA radio output hook failed: ${error}` });
   }
 
   const findAudio = () =>
@@ -63,21 +73,19 @@
       if (!sound) {
         sound = window.westplayCabSound(
           () => qmaOutput.node ?? findAudio(),
-          (message) => tellTop({ spectrum: message.spectrum }),
+          (message) => tell({ spectrum: message.spectrum }),
           { playing },
         );
-        tellTop({ log: "radio audio joined the cab sound field" });
+        tell({ log: "radio audio joined the cab sound field" });
       } else {
         sound.tick();
       }
       apply();
     } catch (error) {
-      tellTop({ log: `radio sound field failed: ${error}` });
+      tell({ log: `radio sound field failed: ${error}` });
     }
   };
-  window.addEventListener("message", ({ data }) => {
-    if (!data?.__westplayRadioCab || !data.message) return;
-    const message = data.message;
+  const setCab = (message) => {
     switch (message.action) {
       case "speakers":
         cab.speakers = message.speakers;
@@ -103,9 +111,13 @@
         return;
     }
     attach();
+  };
+  window.__westplayRadioCab = setCab;
+  window.addEventListener("message", ({ data }) => {
+    if (data?.__westplayRadioCab && data.message) setCab(data.message);
   });
 
-  tellTop({ ready: true });
+  tell({ log: "radio frame ready" });
   setInterval(attach, 500);
   return "started";
 })();

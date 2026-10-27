@@ -28,6 +28,6 @@ describe('appIcon', () => {
       }
     }
     expect(appIcon('youtubeMusic', 'dark')).toBe('/icons/westplay/youtube-music.dark.svg')
-    expect(appIcon('qqMusic', 'dark')).toBe('/icons/westplay/qq-music-official.webp')
+    expect(appIcon('qqMusic', 'dark')).toBe('/icons/westplay/qq-music-official.dark.webp')
   })
 })

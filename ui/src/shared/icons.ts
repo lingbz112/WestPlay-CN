@@ -36,6 +36,6 @@ const FILES: Record<AppIconRole, string> = {
 
 /** WestPlay's own icon for `role`, for a light or a dark screen. */
 export function appIcon(role: AppIconRole, look: 'light' | 'dark' = 'light'): string {
-  if (role === 'qqMusic') return '/icons/westplay/qq-music-official.webp'
+  if (role === 'qqMusic') return `/icons/westplay/qq-music-official.${look}.webp`
   return `/icons/westplay/${FILES[role]}.${look}.svg`
 }

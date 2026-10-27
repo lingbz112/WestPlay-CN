@@ -719,8 +719,17 @@
     const bar = one('.player_voice .player_progress__inner')
     if (!bar) return
     const box = bar.getBoundingClientRect()
-    const x = box.left + Math.max(0, Math.min(1, share)) * box.width
-    clickAt(x, box.top + box.height / 2)
+    const fill = one('.player_progress__play', bar)
+    const current = fill && box.width ? Math.max(0, Math.min(1, fill.getBoundingClientRect().width / box.width)) : 0
+    const y = box.top + box.height / 2
+    post({
+      drag: {
+        fromX: box.left + current * box.width,
+        fromY: y,
+        toX: box.left + Math.max(0, Math.min(1, share)) * box.width,
+        toY: y,
+      },
+    })
   }
   const CONTROLS = {
     play() {

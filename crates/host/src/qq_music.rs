@@ -346,6 +346,42 @@ impl QqMusic {
                         point,
                     );
                 }
+                Some(Message::Drag { from_x, from_y, to_x, to_y }) => {
+                    let point = |x: f64, y: f64| POINT {
+                        x: x.clamp(0.0, 10_000.0).round() as i32,
+                        y: y.clamp(0.0, 10_000.0).round() as i32,
+                    };
+                    let from = point(from_x, from_y);
+                    let to = point(to_x, to_y);
+                    let _ = self.player.send_mouse(
+                        COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
+                        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
+                        0,
+                        from,
+                    );
+                    let _ = self.player.send_mouse(
+                        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
+                        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON,
+                        0,
+                        from,
+                    );
+                    for step in 1..=6 {
+                        let point =
+                            POINT { x: from.x + (to.x - from.x) * step / 6, y: from.y + (to.y - from.y) * step / 6 };
+                        let _ = self.player.send_mouse(
+                            COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
+                            COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON,
+                            0,
+                            point,
+                        );
+                    }
+                    let _ = self.player.send_mouse(
+                        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+                        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
+                        0,
+                        to,
+                    );
+                }
                 Some(Message::State(state)) => reports.push(Report::State(state)),
                 Some(Message::Answer(answer)) => {
                     self.unanswered.borrow_mut().answered(answer.answer);
@@ -380,6 +416,7 @@ enum Message {
     Ready(Role),
     Queued,
     Click { x: f64, y: f64 },
+    Drag { from_x: f64, from_y: f64, to_x: f64, to_y: f64 },
     State(State),
     Answer(Box<Answer>),
     Playback(Option<Box<Playback>>),
@@ -402,6 +439,15 @@ fn read_message(message: &str) -> Option<Message> {
         let y = click.get("y")?.as_f64()?;
         if x.is_finite() && y.is_finite() {
             return Some(Message::Click { x, y });
+        }
+    }
+    if let Some(drag) = value.get("drag") {
+        let from_x = drag.get("fromX")?.as_f64()?;
+        let from_y = drag.get("fromY")?.as_f64()?;
+        let to_x = drag.get("toX")?.as_f64()?;
+        let to_y = drag.get("toY")?.as_f64()?;
+        if [from_x, from_y, to_x, to_y].into_iter().all(f64::is_finite) {
+            return Some(Message::Drag { from_x, from_y, to_x, to_y });
         }
     }
     if value.get("answer").is_some() {

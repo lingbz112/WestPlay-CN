@@ -174,9 +174,9 @@
   const section = (title, style, listed, songs) => ({ title, style, items: listed, songs })
   const emptyPage = () => page([])
 
-  const homePage = () => {
+  const homePage = async () => {
     const playlists = items('playlist').slice(0, 12)
-    const songs = tracks().slice(0, 20)
+    const songs = await enrichTracks(tracks().slice(0, 20))
     const albums = items('album').slice(0, 8)
     const sections = []
     if (playlists.length) sections.push(section('热门歌单', 'shelf', playlists, []))
@@ -184,9 +184,9 @@
     if (albums.length) sections.push(section('新碟上架', 'shelf', albums, []))
     return page(sections)
   }
-  const newPage = () => {
+  const newPage = async () => {
     const albums = items('album').slice(0, 16)
-    const songs = tracks().slice(0, 24)
+    const songs = await enrichTracks(tracks().slice(0, 24))
     const sections = []
     if (albums.length) sections.push(section('新碟上架', 'shelf', albums, []))
     if (songs.length) sections.push(section('新歌首发', 'songs', [], songs))
@@ -288,6 +288,42 @@
       number: Number(song.position) || null,
     }
   }
+  const missingCover = (image) =>
+    !image || image === DEFAULT_IMAGE || image.includes('mediastyle/global/img/album_300')
+
+  /**
+   * QQ's home and search rows are lazily drawn: their <img> often holds only a transparent GIF and the
+   * generic album placeholder. Ask each song's own page for its MusicRecording JSON-LD, whose image is the
+   * real album cover (and fills in a missing album or length too).
+   */
+  const enrichTracks = async (list, most = 16) => {
+    const missing = list.filter((track) => missingCover(track.image)).slice(0, most)
+    await Promise.all(
+      missing.map(async (track) => {
+        const mid = String(track.id).split(':').pop()
+        if (!mid) return
+        try {
+          const doc = await fetchDoc(`${ORIGIN}/n/ryqq_v2/songDetail/${mid}`)
+          const node = nodeOf(doc, 'MusicRecording')
+          if (!node) return
+          if (node.image) track.image = new URL(node.image, location.href).href
+          if (node.inAlbum?.name) track.album = norm(node.inAlbum.name)
+          if (node.inAlbum?.url) {
+            const album = idOf(node.inAlbum.url, 'album')
+            if (album) track.albumId = `qq:album:${album}`
+          }
+          if (!track.artist) track.artist = artistName(node.byArtist)
+          const artist = Array.isArray(node.byArtist) ? node.byArtist[0] : node.byArtist
+          if (!track.artistId && artist?.url) {
+            const id = idOf(artist.url, 'artist')
+            if (id) track.artistId = `qq:artist:${id}`
+          }
+          if (!track.duration) track.duration = isoDuration(node.duration)
+        } catch {}
+      }),
+    )
+    return list
+  }
   const collectionAnswer = async (id) => {
     const parts = String(id).split(':')
     const collectionKind = parts[1] === 'album' ? 'album' : 'playlist'
@@ -365,7 +401,7 @@
       description: norm(node?.description),
       genre: norm(node?.genre),
       year: Number(String(node?.dateCreated ?? node?.datePublished ?? '').slice(0, 4)) || null,
-      tracks: rows,
+      tracks: await enrichTracks(rows, 8),
     }
   }
   const artistAnswer = async (id) => {
@@ -385,20 +421,29 @@
       explicit: false,
       live: false,
     }
-    return { item, top: tracks(doc).slice(0, 20), sections: [] }
+    return { item, top: await enrichTracks(tracks(doc).slice(0, 20)), sections: [] }
   }
   const libraryAnswer = async (shelf) => {
     if (!signedIn()) return { items: [], songs: [], sorts: [], sort: null }
-    let doc
-    try {
-      doc = await fetchDoc(`${ORIGIN}/n/ryqq_v2/profile`)
-    } catch {
-      return { items: [], songs: [], sorts: [], sort: null }
+    // The Library is drawn by QQ Music's own client script; its fetched HTML is only a shell. Open it in
+    // this hidden browser and read the live page. The host re-asks after the navigation.
+    if (!location.pathname.includes('/profile')) {
+      location.href = `${ORIGIN}/n/ryqq_v2/profile`
+      return null
     }
-    const listed = shelf === 'albums' ? items('album', doc) : shelf === 'artists' ? items('artist', doc) : items('playlist', doc)
+    for (let i = 0; i < 24; i++) {
+      const ready =
+        shelf === 'songs'
+          ? all('.songlist__item, [class*="songlist__item"]', document).length > 0
+          : all('a[href*="/playlist/"]', document).length > 0
+      if (ready) break
+      await sleep(250)
+    }
+    const listed =
+      shelf === 'albums' ? items('album') : shelf === 'artists' ? items('artist') : items('playlist')
     return {
       items: listed.slice(0, 60),
-      songs: shelf === 'songs' ? tracks(doc).slice(0, 100) : [],
+      songs: shelf === 'songs' ? await enrichTracks(tracks().slice(0, 100), 20) : [],
       sorts: [],
       sort: null,
     }
@@ -441,7 +486,7 @@
       return null
     }
     for (let i = 0; i < 24 && tracks().length === 0; i++) await sleep(250)
-    const songs = tracks().slice(0, 40)
+    const songs = await enrichTracks(tracks().slice(0, 40))
     return { top: [], songs, artists: [], albums: [], playlists: [], stations: [] }
   }
   const ask = async (id, question) => {
@@ -453,14 +498,14 @@
             location.href = HOME
             return
           }
-          answer = homePage()
+          answer = await homePage()
           break
         case 'new':
           if (location.pathname !== '/') {
             location.href = HOME
             return
           }
-          answer = newPage()
+          answer = await newPage()
           break
         case 'radio':
           if (location.pathname !== '/') {
@@ -651,6 +696,7 @@
     }
     return false
   }
+  const clickAt = (x, y) => post({ click: { x, y } })
   const seek = (seconds) => {
     const audio = findAudio()
     if (audio) {
@@ -662,9 +708,7 @@
     if (!bar || !duration) return
     const box = bar.getBoundingClientRect()
     const x = box.left + Math.max(0, Math.min(1, seconds / duration)) * box.width
-    for (const type of ['mousedown', 'mouseup']) {
-      bar.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: box.top + box.height / 2 }))
-    }
+    clickAt(x, box.top + box.height / 2)
   }
   const setVolume = (share) => {
     const audio = findAudio()
@@ -676,9 +720,7 @@
     if (!bar) return
     const box = bar.getBoundingClientRect()
     const x = box.left + Math.max(0, Math.min(1, share)) * box.width
-    for (const type of ['mousedown', 'mouseup']) {
-      bar.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: box.top + box.height / 2 }))
-    }
+    clickAt(x, box.top + box.height / 2)
   }
   const CONTROLS = {
     play() {

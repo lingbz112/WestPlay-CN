@@ -22,6 +22,12 @@ use crate::apple_music::{Answer, Playback, State};
 use crate::signin::{self, Confirming, Progress, SignInWindow};
 use crate::speakers::{self, Equalizer, Head, Speaker};
 use crate::webview::{self, OffscreenWebView, Stage};
+use webview2_com::Microsoft::Web::WebView2::Win32::{
+    COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN, COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+    COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE, COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON,
+    COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
+};
+use windows::Win32::Foundation::POINT;
 
 /// QQ Music's home.
 pub const HOME: &str = "https://y.qq.com/";
@@ -318,6 +324,28 @@ impl QqMusic {
                     let _ = self.player.post_json(r#"{"action":"play"}"#);
                     reports.push(Report::Queued);
                 }
+                Some(Message::Click { x, y }) => {
+                    let point =
+                        POINT { x: x.clamp(0.0, 10_000.0).round() as i32, y: y.clamp(0.0, 10_000.0).round() as i32 };
+                    let _ = self.player.send_mouse(
+                        COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
+                        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
+                        0,
+                        point,
+                    );
+                    let _ = self.player.send_mouse(
+                        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
+                        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON,
+                        0,
+                        point,
+                    );
+                    let _ = self.player.send_mouse(
+                        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+                        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
+                        0,
+                        point,
+                    );
+                }
                 Some(Message::State(state)) => reports.push(Report::State(state)),
                 Some(Message::Answer(answer)) => {
                     self.unanswered.borrow_mut().answered(answer.answer);
@@ -351,6 +379,7 @@ impl QqMusic {
 enum Message {
     Ready(Role),
     Queued,
+    Click { x: f64, y: f64 },
     State(State),
     Answer(Box<Answer>),
     Playback(Option<Box<Playback>>),
@@ -367,6 +396,13 @@ fn read_message(message: &str) -> Option<Message> {
     }
     if value.get("queued").and_then(serde_json::Value::as_bool) == Some(true) {
         return Some(Message::Queued);
+    }
+    if let Some(click) = value.get("click") {
+        let x = click.get("x")?.as_f64()?;
+        let y = click.get("y")?.as_f64()?;
+        if x.is_finite() && y.is_finite() {
+            return Some(Message::Click { x, y });
+        }
     }
     if value.get("answer").is_some() {
         return match serde_json::from_value::<Answer>(value.clone()) {

@@ -1591,13 +1591,6 @@
     };
   };
   let lastPlayback = "";
-  let heldVolume = null;
-  let holdVolumeUntil = 0;
-  const holdVolume = (share) => {
-    heldVolume = Math.max(0, Math.min(1, Number(share) || 0));
-    holdVolumeUntil = Date.now() + 3500;
-    setVolume(heldVolume);
-  };
   const sayPlayback = () => {
     const playback = currentPlayback();
     const text = JSON.stringify(playback);
@@ -1714,7 +1707,7 @@
       seek(Number(command.seconds) || 0);
     },
     volume(command) {
-      holdVolume((Number(command.percent) || 0) / 100);
+      setVolume((Number(command.percent) || 0) / 100);
     },
     shuffle() {
       click('[class*="shuffle"], [title*="随机"], [class*="random"]');
@@ -1833,10 +1826,5 @@
   if (role === "player") {
     setInterval(sayPlayback, 500);
     setInterval(attach, 1000);
-    setInterval(() => {
-      if (heldVolume !== null && Date.now() < holdVolumeUntil) {
-        setVolume(heldVolume);
-      }
-    }, 250);
   }
 })();

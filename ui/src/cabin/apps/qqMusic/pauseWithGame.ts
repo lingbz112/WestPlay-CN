@@ -1,5 +1,5 @@
 import { type MusicPlayer, pauseMusicWithGame } from '../musicWithGame'
-import { pauseNow, playingNow, qqMusic, resumeNow, setVolume, useQqMusic } from './qqMusic'
+import { pauseNow, playingNow, qqMusic, resumeNow, setVolume, useQqMusic, volumeNow } from './qqMusic'
 
 /** QQ Music as one of the cab's players (musicWithGame.ts, oneAtATime.ts). */
 export const qqMusicPlayer: MusicPlayer = {
@@ -7,7 +7,7 @@ export const qqMusicPlayer: MusicPlayer = {
   playingHere: playingNow,
   pauseHere: pauseNow,
   resumeHere: resumeNow,
-  volume: () => useQqMusic.getState().playback?.volume ?? null,
+  volume: volumeNow,
   sendVolume: (share) => qqMusic({ action: 'volume', percent: Math.round(share * 100) }),
   setVolume: (share) => setVolume(share, true),
   // Started: playing, its sound come (asked to play, it shows playing at once, loading until Apple Music

@@ -609,11 +609,13 @@ let preferredVolume = (() => {
     return PREVIEW_VOLUME
   }
 })()
+let volumeControlUntil = 0
 /** The player's volume (0 to 1), as it's dragged: shown at once, sent a few times a second (and the last one
  * always). */
 export function setVolume(share: number, done = false): void {
   const volume = Math.min(1, Math.max(0, share))
   preferredVolume = volume
+  volumeControlUntil = performance.now() + 1200
   try {
     localStorage.setItem(VOLUME_KEY, String(volume))
   } catch {}
@@ -623,6 +625,11 @@ export function setVolume(share: number, done = false): void {
   if (!done && now - volumeSent < 120) return
   volumeSent = now
   qqMusic({ action: 'volume', percent: Math.round(volume * 100) })
+}
+
+/** The volume chosen in WestPlay: keybind steps use this, not QQ's lagging playback report. */
+export function volumeNow(): number {
+  return preferredVolume
 }
 
 /** The last skip pressed (for the way the cover slides when Apple Music says the song changed). */
@@ -676,6 +683,7 @@ export function receivePlayback(playback: AppleMusicPlayback | null): void {
   if (playback.playing) stopExpecting()
   const { favorites } = useQqMusic.getState()
   const favorite = playback.track.favorite
+  const volume = performance.now() < volumeControlUntil ? preferredVolume : playback.volume
   useQqMusic.setState({
     playback: {
       context: playback.context,
@@ -689,7 +697,7 @@ export function receivePlayback(playback: AppleMusicPlayback | null): void {
       preview: playback.preview,
       shuffle: playback.shuffle,
       repeat: playback.repeat,
-      volume: playback.volume,
+      volume,
       direction,
     },
     // What Apple Music says of the song's favourite is the latest (not said: what was known stays).

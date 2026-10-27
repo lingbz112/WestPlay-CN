@@ -137,7 +137,9 @@ impl QqMusic {
         ))?;
         browse.navigate(HOME)?;
 
-        let player = OffscreenWebView::new(stage, width, height, user_data)?;
+        // One environment for both pages: they share QQ Music's profile, cookies and login. A second
+        // environment on the same profile is refused by WebView2 (ERROR_INVALID_STATE).
+        let player = OffscreenWebView::with_environment(stage, width, height, browse.environment().clone())?;
         player.log_as("qq music player")?;
         player.show(false)?;
         stage.add(&player, false)?;

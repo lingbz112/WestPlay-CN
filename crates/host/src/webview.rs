@@ -186,6 +186,19 @@ pub struct OffscreenWebView {
 impl OffscreenWebView {
     /// A WebView of `width` x `height` on `stage`'s compositor (not on the frame until [`Stage::add`]).
     pub fn new(stage: &Stage, width: u32, height: u32, user_data: &Path) -> Result<Self, Error> {
+        let environment = create_environment(user_data)?;
+        Self::with_environment(stage, width, height, environment)
+    }
+
+    /// A WebView sharing an existing WebView2 environment: the same profile, cookies and browser process. Use
+    /// this for a second view of one service (QQ Music's browser and player), instead of opening the profile
+    /// again (WebView2 refuses two environments on one profile with `ERROR_INVALID_STATE`).
+    pub fn with_environment(
+        stage: &Stage,
+        width: u32,
+        height: u32,
+        environment: ICoreWebView2Environment,
+    ) -> Result<Self, Error> {
         let root = stage.compositor.CreateContainerVisual()?;
         root.SetSize(Vector2 { X: width as f32, Y: height as f32 })?;
 
@@ -220,7 +233,6 @@ impl OffscreenWebView {
             let _ = EnableWindow(host, false);
         }
 
-        let environment = create_environment(user_data)?;
         // SAFETY: WebView2 writes a CoTaskMem string into `version`, read before it's dropped.
         let version = unsafe {
             let mut version = PWSTR::null();

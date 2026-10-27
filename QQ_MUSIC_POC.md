@@ -31,6 +31,10 @@ Search, Home and lyrics navigate the browser page; the player page is separate, 
 playback. A song is queued by visiting its QQ Music page and pressing its own Play button. The shared WebView2
 profile then gives the queue to the player page.
 
+Both QQ pages are created from one WebView2 environment, so they share the same profile, cookies and browser
+process. Creating two environments on one profile makes WebView2 fail with `ERROR_INVALID_STATE`
+(`0x8007139F`), which stopped the host in the first in-game build.
+
 ## Tested
 
 - `npm run build` — UI TypeScript and Vite build pass.

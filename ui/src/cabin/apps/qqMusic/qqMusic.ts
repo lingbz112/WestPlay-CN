@@ -104,7 +104,7 @@ export interface LibraryLook {
 /** Each list as it starts (Apple's): playlists and songs as lists, albums and artists as grids. */
 const LIBRARY_LOOKS: Record<AppleMusicShelf, LibraryLook> = {
   recent: { view: 'grid', sort: null, filter: 'all' },
-  playlists: { view: 'list', sort: null, filter: 'all' },
+  playlists: { view: 'grid', sort: null, filter: 'all' },
   albums: { view: 'grid', sort: null, filter: 'all' },
   artists: { view: 'list', sort: null, filter: 'all' },
   songs: { view: 'list', sort: null, filter: 'all' },
@@ -288,7 +288,21 @@ export function openView(view: Unidentified<View>): void {
 
 /** A card pressed: its page; a station or a song plays. */
 export function openItem(item: AppleMusicItem): void {
-  if (item.kind === 'station' || item.kind === 'song') play(item)
+  if (item.kind === 'song' && useQqMusic.getState().tab === 'search') {
+    playSearchTrack({
+      id: item.id,
+      name: item.name,
+      artist: item.by,
+      album: '',
+      albumId: null,
+      artistId: null,
+      image: item.image,
+      color: item.color,
+      duration: 0,
+      explicit: item.explicit,
+      number: null,
+    })
+  } else if (item.kind === 'station' || item.kind === 'song') play(item)
   else if (item.kind === 'folder') openView({ kind: 'library', shelf: 'playlists', folder: item })
   else if (item.kind === 'artist') openView({ kind: 'artist', item })
   else if (item.kind === 'curator') openView({ kind: 'curator', item })
@@ -379,14 +393,15 @@ export function playFrom(
   const shuffled = shuffle ?? was?.shuffle ?? false
   const start = index ?? (shuffled ? Math.floor(Math.random() * tracks.length) : 0)
   if (isInHost()) {
-    // A list of the Library's songs, or a search's, plays as that list; an album or playlist as itself.
-    const list = !context || context.kind === 'artist'
+    // Every visible list travels with its playback request: the whole collection becomes QQ's queue.
     qqMusic({
       action: 'play',
-      ...(list ? { songs: tracks.map((track) => track.id) } : { id: context.id }),
+      ...(context ? { id: context.id } : {}),
+      songs: tracks.map((track) => track.id),
       // The song to start with, chosen here (a random one, shuffling): Apple Music starts with it.
       index: start,
       shuffle: shuffled,
+      ...(context ? { name: context.name, kind: context.kind } : {}),
     })
     expectPlaying()
   }
@@ -449,6 +464,35 @@ export function play(item: AppleMusicItem): void {
   }
   const queue = previewQueue(item)
   if (queue) playFrom(queue.context, queue.tracks, Math.max(0, queue.index))
+}
+
+/**
+ * A song picked on Search plays now without clearing the queue already in QQ Music. The page inserts it
+ * before the current queue's next song; the original list resumes when it ends.
+ */
+export function playSearchTrack(track: AppleMusicTrack): void {
+  const was = useQqMusic.getState().playback
+  if (isInHost()) {
+    qqMusic({ action: 'play', id: track.id, insert: true })
+    expectPlaying()
+  }
+  useQqMusic.setState({
+    playback: {
+      context: was?.context ?? null,
+      tracks: was ? [track, ...was.tracks.slice(was.index + 1)] : [track],
+      index: 0,
+      playing: true,
+      loading: isInHost(),
+      position: 0,
+      at: performance.now(),
+      duration: lengthOf(track),
+      preview: !useQqMusic.getState().signedIn,
+      shuffle: was?.shuffle ?? false,
+      repeat: was?.repeat ?? 'off',
+      volume: was?.volume ?? (isInHost() ? null : PREVIEW_VOLUME),
+      direction: 1,
+    },
+  })
 }
 
 /** Plays or pauses what's playing. */

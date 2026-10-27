@@ -477,7 +477,16 @@ export type AppleMusicCommand =
   | { action: 'ask'; id: number; question: AppleMusicQuestion }
   /** An album, playlist, station, artist or song (`id`), or a list of songs (`songs`), from `index`; with
    * neither, play on. */
-  | { action: 'play'; id?: string; songs?: string[]; index?: number; shuffle?: boolean }
+  | {
+      action: 'play'
+      id?: string
+      songs?: string[]
+      index?: number
+      shuffle?: boolean
+      name?: string
+      kind?: AppleMusicItem['kind']
+      insert?: boolean
+    }
   | { action: 'pause' }
   | { action: 'next' }
   | { action: 'previous' }

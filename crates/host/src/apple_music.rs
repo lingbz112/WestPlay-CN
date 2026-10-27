@@ -53,6 +53,14 @@ pub enum Command {
         index: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         shuffle: Option<bool>,
+        /// The list's name and kind, so a page can keep showing where the queue came from.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<Kind>,
+        /// Play one search result without replacing the queue already playing.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        insert: bool,
     },
     Pause,
     Next,
@@ -847,10 +855,21 @@ mod tests {
             Command::Ask { id: 4, question: Question::New }
         );
         let play: Command = serde_json::from_str(r#"{"action":"play","id":"albums:1","index":2}"#).unwrap();
-        assert_eq!(play, Command::Play { id: Some("albums:1".into()), songs: None, index: Some(2), shuffle: None });
+        assert_eq!(
+            play,
+            Command::Play {
+                id: Some("albums:1".into()),
+                songs: None,
+                index: Some(2),
+                shuffle: None,
+                name: None,
+                kind: None,
+                insert: false,
+            }
+        );
         assert_eq!(
             serde_json::from_str::<Command>(r#"{"action":"play"}"#).unwrap(),
-            Command::Play { id: None, songs: None, index: None, shuffle: None }
+            Command::Play { id: None, songs: None, index: None, shuffle: None, name: None, kind: None, insert: false }
         );
         assert_eq!(
             serde_json::from_str::<Command>(r#"{"action":"favorite","id":"songs:9","on":true}"#).unwrap(),
@@ -872,7 +891,10 @@ mod tests {
                 id: None,
                 songs: Some(vec!["songs:1".into()]),
                 index: Some(0),
-                shuffle: None
+                shuffle: None,
+                name: None,
+                kind: None,
+                insert: false,
             })
             .unwrap(),
             r#"{"action":"play","songs":["songs:1"],"index":0}"#
@@ -994,6 +1016,9 @@ mod tests {
                 songs: None,
                 index: None,
                 shuffle: Some(false),
+                name: None,
+                kind: None,
+                insert: false,
             })
             .unwrap();
         pump(12, &mut timings, &mut ready);
@@ -1092,13 +1117,33 @@ mod tests {
         assert!(ready, "the web player said nothing");
         music.command(&Command::Volume { percent: 2.0 }).unwrap();
         let album = std::env::var("WESTPLAY_ALBUM").unwrap_or_else(|_| "albums:499332675".into());
-        music.command(&Command::Play { id: Some(album), songs: None, index: None, shuffle: Some(false) }).unwrap();
+        music
+            .command(&Command::Play {
+                id: Some(album),
+                songs: None,
+                index: None,
+                shuffle: Some(false),
+                name: None,
+                kind: None,
+                insert: false,
+            })
+            .unwrap();
         pump(14.6, &mut said, &mut ready);
         println!("pause");
         music.command(&Command::Pause).unwrap();
         pump(3.0, &mut said, &mut ready);
         println!("play on");
-        music.command(&Command::Play { id: None, songs: None, index: None, shuffle: None }).unwrap();
+        music
+            .command(&Command::Play {
+                id: None,
+                songs: None,
+                index: None,
+                shuffle: None,
+                name: None,
+                kind: None,
+                insert: false,
+            })
+            .unwrap();
         pump(5.0, &mut said, &mut ready);
         music.command(&Command::Pause).unwrap();
         pump(1.0, &mut said, &mut ready);

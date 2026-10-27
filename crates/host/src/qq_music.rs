@@ -243,7 +243,7 @@ impl QqMusic {
                 self.unanswered.borrow_mut().asked(*id, sent.clone());
                 self.browse.post_json(&sent)
             }
-            Command::Play { id, songs, index, shuffle } => {
+            Command::Play { id, songs, index, shuffle, .. } => {
                 if id.is_none() && songs.is_none() {
                     return self.player.post_json(r#"{"action":"play"}"#);
                 }

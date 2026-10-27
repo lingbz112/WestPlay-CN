@@ -33,6 +33,12 @@ import './music.css'
 import './qqMusic.css'
 
 const FIELD = 'qq-music-search'
+const TAB_NAMES: Record<Exclude<Tab, 'search'>, string> = {
+  home: '首页',
+  new: '雷达',
+  radio: '分类歌单',
+  library: '我的音乐',
+}
 
 /**
  * Music: Apple Music, WestPlay's own app in the look of Apple's own on iPadOS 26, sized for the cab. On top,
@@ -141,7 +147,7 @@ export function QqMusicApp() {
                     onClick={() => go(each)}
                   >
                     <TabGlyph tab={each} on={each === tab && !typing} />
-                    <span>{words.tabs[each]}</span>
+                    <span>{TAB_NAMES[each as Exclude<Tab, 'search'>]}</span>
                   </button>
                 ))}
               </div>
@@ -305,7 +311,7 @@ function TabPage({ tab, shown }: { tab: Tab; shown: boolean }) {
     case 'radio':
       return <Radio />
     case 'library':
-      return <Library shown={shown} />
+      return <Library />
     case 'search':
       return <Search />
   }

@@ -14,6 +14,7 @@ import {
   openItem,
   openView,
   playFrom,
+  playSearchTrack,
   remember,
   setLibraryLook,
   signIn,
@@ -124,7 +125,7 @@ export function Home({ shown }: { shown: boolean }) {
   const account = useAccount()
   const asked = useAsked(account === 'in' ? { ask: 'home' } : null, useShownAgain(shown))
   const latest = useAsked(account === 'out' ? { ask: 'new' } : null)
-  const title = text.appleMusic.tabs.home
+  const title = 'QQ音乐首页'
   if (account === 'unknown') {
     return (
       <Scroll title={title}>
@@ -154,12 +155,11 @@ export function Home({ shown }: { shown: boolean }) {
 }
 
 export function New() {
-  const text = useText()
   const asked = useAsked({ ask: 'new' })
   return (
-    <Answered asked={asked} title={text.appleMusic.tabs.new}>
+    <Answered asked={asked} title="雷达">
       {(page) => (
-        <Scroll title={text.appleMusic.tabs.new}>
+        <Scroll title="雷达">
           <Sections sections={page.sections} />
         </Scroll>
       )}
@@ -168,12 +168,11 @@ export function New() {
 }
 
 export function Radio() {
-  const text = useText()
   const asked = useAsked({ ask: 'radio' })
   return (
-    <Answered asked={asked} title={text.appleMusic.tabs.radio}>
+    <Answered asked={asked} title="分类歌单">
       {(page) => (
-        <Scroll title={text.appleMusic.tabs.radio}>
+        <Scroll title="分类歌单">
           <Sections sections={dedupe(page.sections)} />
         </Scroll>
       )}
@@ -192,13 +191,12 @@ function dedupe(sections: AppleMusicSection[]): AppleMusicSection[] {
   })
 }
 
-const SHELVES: AppleMusicShelf[] = ['playlists', 'artists', 'albums', 'songs']
+const SHELVES: AppleMusicShelf[] = ['playlists', 'artists', 'songs']
 
-export function Library({ shown }: { shown: boolean }) {
+export function Library() {
   const text = useText()
   const account = useAccount()
-  const asked = useAsked(account === 'in' ? { ask: 'library', shelf: 'recent' } : null, useShownAgain(shown))
-  const title = text.appleMusic.tabs.library
+  const title = '我的音乐'
   if (account !== 'in') {
     return (
       <Scroll title={title}>
@@ -226,24 +224,6 @@ export function Library({ shown }: { shown: boolean }) {
           </button>
         ))}
       </div>
-      <section className="am-section">
-        <div className="am-section-head">
-          <h2>{text.appleMusic.recentlyAdded}</h2>
-        </div>
-        {asked.failed ? (
-          <Failed onRetry={asked.retry} />
-        ) : !asked.answer ? (
-          <Loading />
-        ) : asked.answer.items.length === 0 ? (
-          <p className="am-empty">{text.appleMusic.empty}</p>
-        ) : (
-          <div className="am-grid">
-            {asked.answer.items.map((item, i) => (
-              <Tile key={`${item.id}:${i}`} item={item} />
-            ))}
-          </div>
-        )}
-      </section>
     </Scroll>
   )
 }
@@ -251,13 +231,13 @@ export function Library({ shown }: { shown: boolean }) {
 function shelfName(text: ReturnType<typeof useText>, shelf: AppleMusicShelf): string {
   const words = text.appleMusic
   return shelf === 'playlists'
-    ? words.playlists
+    ? '我创建的歌单'
     : shelf === 'artists'
-      ? words.artists
+      ? '我的已购'
       : shelf === 'albums'
-        ? words.albums
+        ? '我收藏的专辑'
         : shelf === 'songs'
-          ? words.songs
+          ? '我喜欢的音乐'
           : words.recentlyAdded
 }
 
@@ -277,7 +257,7 @@ export function Search() {
   const recent = useQqMusic((state) => state.recent)
   const asked = useAsked({ ask: 'browse' })
   return (
-    <Scroll title={text.appleMusic.tabs.search}>
+    <Scroll title="搜索">
       {recent.length > 0 && (
         <section className="am-section">
           <div className="am-section-head">
@@ -401,7 +381,16 @@ function Results({ query, onPicked }: { query: string; onPicked?(): void }) {
               </section>
             )}
             {results.songs.length > 0 && (
-              <Section section={{ title: words.songs, style: 'songs', items: [], songs: results.songs }} />
+              <section className="am-section">
+                <div className="am-section-head">
+                  <h2>{words.songs}</h2>
+                </div>
+                <div className="am-shelf am-song-columns">
+                  {results.songs.slice(0, 12).map((track, i) => (
+                    <SongRow key={`${track.id}:${i}`} track={track} cover onPlay={() => playSearchTrack(track)} />
+                  ))}
+                </div>
+              </section>
             )}
             {shelf(words.artists, results.artists)}
             {shelf(words.albums, results.albums)}
@@ -636,13 +625,18 @@ function SectionPage({ section }: { section: AppleMusicSection }) {
 }
 
 /** The filter's name for all of a list ("All Playlists"). */
-function allOf(text: ReturnType<typeof useText>, shelf: AppleMusicShelf): string {
-  const all = text.appleMusic.all
-  return shelf === 'albums' ? all.albums : shelf === 'songs' ? all.songs : all.playlists
+function allOf(_text: ReturnType<typeof useText>, shelf: AppleMusicShelf): string {
+  return shelf === 'albums'
+    ? '所有专辑'
+    : shelf === 'songs'
+      ? '所有歌曲'
+      : shelf === 'artists'
+        ? '所有已购歌曲'
+        : '所有歌单'
 }
 
 /** Which lists can show only favourites (Apple Music rates playlists, albums and songs). */
-const FAVOURABLE: AppleMusicShelf[] = ['playlists', 'albums', 'songs']
+const FAVOURABLE: AppleMusicShelf[] = []
 
 /**
  * A list of the Library, as Apple's (iOS 26): its title, and on its right the filter (all, or favourites:
@@ -776,7 +770,7 @@ function LibraryControls({
     setLibraryLook(shelf, change)
     setMenu(null)
   }
-  const views = shelf !== 'songs'
+  const views = shelf === 'playlists' || shelf === 'albums'
   return (
     <div className="am-controls" ref={controls}>
       <div className="am-control-bar glass">

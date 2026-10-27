@@ -16,6 +16,12 @@ import {
   useYouTubeMusic,
   useYouTubeMusicSource,
 } from '../apps/youtubeMusic/youtubeMusic'
+import {
+  playOrPause as playOrPauseQqMusic,
+  skip as skipQqMusic,
+  useQqMusic,
+  useQqMusicSource,
+} from '../apps/qqMusic/qqMusic'
 import type { MediaAction, MediaSource } from '../../shared/media'
 import { go, useCabin } from '../state/store'
 import { useMapData } from '../maps/mapData'
@@ -35,15 +41,35 @@ import { cabClock } from '../../shared/host'
  */
 export function NowPlayingWidget() {
   const shown = useCabin((state) => state.dashboardWidgets.nowPlaying)
-  const { showing, spotify, appleMusic, youtubeMusic } = useNowPlaying()
+  const { showing, spotify, appleMusic, qqMusic, youtubeMusic } = useNowPlaying()
   return (
     <div className={`widget-slot${shown ? ' open' : ''}`}>
       {shown && showing === 'video' && <VideoWidget />}
       {shown && showing === 'spotify' && spotify && <SpotifyWidget spotify={spotify} />}
       {shown && showing === 'appleMusic' && appleMusic && <AppleMusicWidget appleMusic={appleMusic} />}
+      {shown && showing === 'qqMusic' && qqMusic && <QqMusicWidget qqMusic={qqMusic} />}
       {shown && showing === 'youtubeMusic' && youtubeMusic && <YouTubeMusicWidget youtubeMusic={youtubeMusic} />}
       {shown && showing === null && <MusicWidget source={null} artwork={null} onControl={() => {}} />}
     </div>
+  )
+}
+
+/** QQ Music's current song and queue, opening the copied Music app on Now Playing. */
+function QqMusicWidget({ qqMusic }: { qqMusic: NonNullable<ReturnType<typeof useQqMusicSource>> }) {
+  return (
+    <MusicWidget
+      source={qqMusic.source}
+      artwork={qqMusic.artwork}
+      onOpen={() => {
+        useQqMusic.setState({ nowPlaying: true })
+        go({ type: 'openApp', app: 'qqMusic' })
+      }}
+      onControl={(action) => {
+        if (action === 'playPause') playOrPauseQqMusic()
+        else if (action === 'next') skipQqMusic(1)
+        else if (action === 'previous') skipQqMusic(-1)
+      }}
+    />
   )
 }
 

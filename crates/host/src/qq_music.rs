@@ -91,8 +91,8 @@ impl Unanswered {
         self.0.clear();
     }
 
-    fn all(&self) -> Vec<String> {
-        self.0.values().cloned().collect()
+    fn latest(&self) -> Option<String> {
+        self.0.values().next_back().cloned()
     }
 }
 
@@ -305,7 +305,10 @@ impl QqMusic {
             }
             match read_message(&message) {
                 Some(Message::Ready(Role::Browse)) => {
-                    for sent in self.unanswered.borrow().all() {
+                    // Each library shelf has its own URL. Re-sending every unanswered shelf after a load
+                    // would make this one browser bounce between them forever; the newest question is the
+                    // page the player is looking at.
+                    for sent in self.unanswered.borrow().latest().into_iter() {
                         let _ = self.browse.post_json(&sent);
                     }
                     if let Some(prepare) = self.pending_prepare.borrow().as_ref() {

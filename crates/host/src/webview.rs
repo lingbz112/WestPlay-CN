@@ -37,9 +37,8 @@ use windows::Win32::System::WinRT::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DestroyWindow, GW_CHILD, GetWindow, PostMessageW, SetWindowDisplayAffinity,
-    WDA_EXCLUDEFROMCAPTURE, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DestroyWindow, GW_CHILD, GetWindow, PostMessageW, WINDOW_EX_STYLE, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WS_OVERLAPPEDWINDOW,
 };
 use windows::core::{HSTRING, Interface, PCWSTR, PWSTR, w};
 use windows_numerics::Vector2;
@@ -241,7 +240,7 @@ impl OffscreenWebView {
         // SAFETY: a window of the system's own `STATIC` class, its strings static; no parent or menu.
         let host = unsafe {
             CreateWindowExW(
-                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                WINDOW_EX_STYLE(0),
                 w!("STATIC"),
                 w!("westplay-offscreen-host"),
                 WS_OVERLAPPEDWINDOW,
@@ -255,13 +254,6 @@ impl OffscreenWebView {
                 None,
             )?
         };
-        // NVIDIA's overlay and Windows' own desktop capture should see the game and the cabin page's captured
-        // frame, never these hidden WebView hosts as separate full-screen application windows. Tool-window and
-        // no-activate styles also keep a page loading from taking focus from the game.
-        // SAFETY: `host` was just created by this process; display affinity is only a capture policy.
-        unsafe {
-            let _ = SetWindowDisplayAffinity(host, WDA_EXCLUDEFROMCAPTURE);
-        }
         // The page takes input only from WestPlay (`send_mouse`). Disabled, the window and the WebView's own
         // windows inside it get none of the real mouse: otherwise, once a click makes the WebView capture the
         // mouse, the player's real clicks and the real cursor (wherever the game parked it) reach the page too.
@@ -1276,7 +1268,7 @@ fn create_composition_controller(
 fn create_hidden_host(width: u32, height: u32) -> windows::core::Result<HWND> {
     unsafe {
         let host = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WINDOW_EX_STYLE(0),
             w!("STATIC"),
             w!("westplay-hidden-webview"),
             WS_OVERLAPPEDWINDOW,
@@ -1289,7 +1281,6 @@ fn create_hidden_host(width: u32, height: u32) -> windows::core::Result<HWND> {
             Some(GetModuleHandleW(None)?.into()),
             None,
         )?;
-        let _ = SetWindowDisplayAffinity(host, WDA_EXCLUDEFROMCAPTURE);
         let _ = EnableWindow(host, false);
         Ok(host)
     }

@@ -673,6 +673,23 @@ impl OffscreenWebView {
         Ok(true)
     }
 
+    /// Runs `script` in the latest named child frame and logs its result under `label`.
+    pub fn inspect_frame(&self, label: &'static str, script: &str) -> windows::core::Result<bool> {
+        use webview2_com::ExecuteScriptCompletedHandler;
+        let frame = self.frame.borrow().clone();
+        let Some(frame) = frame else { return Ok(false) };
+        let done = ExecuteScriptCompletedHandler::create(Box::new(move |error, result| {
+            match error {
+                Ok(()) => log!("{label}: {result}"),
+                Err(error) => log!("{label} failed: {error}"),
+            }
+            Ok(())
+        }));
+        // SAFETY: the frame is WebView2's live frame for this WebView; script and handler live through the call.
+        unsafe { frame.ExecuteScript(&HSTRING::from(script), &done)? };
+        Ok(true)
+    }
+
     /// Tests: the page's picture, as WebView2 draws it, written to `path` as a PNG (to see what a page shows).
     #[cfg(test)]
     pub fn capture_png(&self, path: &Path) -> Result<(), Error> {

@@ -41,8 +41,29 @@
     tell({ log: `QMA radio output hook failed: ${error}` });
   }
 
+  const mediaElements = new Set();
+  try {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      mediaElements.add(this);
+      tell({ log: `radio media element found (${this.tagName})` });
+      setTimeout(attach, 0);
+      return play.apply(this, args);
+    };
+  } catch (error) {
+    tell({ log: `radio media element hook failed: ${error}` });
+  }
+  try {
+    const AudioElement = window.Audio;
+    window.Audio = function (...args) {
+      const audio = new AudioElement(...args);
+      mediaElements.add(audio);
+      return audio;
+    };
+    window.Audio.prototype = AudioElement.prototype;
+  } catch {}
   const findAudio = () =>
-    [...document.querySelectorAll("audio")].find(
+    [...mediaElements, ...document.querySelectorAll("audio, video")].find(
       (audio) => audio.src || audio.currentSrc,
     ) ?? null;
   const playing = () => {
@@ -85,6 +106,15 @@
       tell({ log: `radio sound field failed: ${error}` });
     }
   };
+  window.__westplayRadioState = () => ({
+    qma: qmaOutput.node?.constructor?.name ?? null,
+    context: qmaOutput.context?.state ?? null,
+    media: mediaElements.size,
+    audio: findAudio()?.tagName ?? null,
+    sound: Boolean(sound),
+    speakers: cab.speakers !== null,
+    head: cab.head !== null,
+  });
   const setCab = (message) => {
     switch (message.action) {
       case "speakers":
@@ -119,5 +149,9 @@
 
   tell({ log: "radio frame ready" });
   setInterval(attach, 500);
+  setTimeout(
+    () => tell({ log: `radio state ${JSON.stringify(window.__westplayRadioState())}` }),
+    2500,
+  );
   return "started";
 })();

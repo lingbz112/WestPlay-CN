@@ -516,6 +516,9 @@ impl QqMusic {
             for message in self.told.borrow().messages.iter().flatten() {
                 self.tell_frame(message);
             }
+            let _ = self
+                .player
+                .inspect_frame("QQ radio frame state", "JSON.stringify(window.__westplayRadioState?.() ?? null)");
         }
         self.restore_if_paused();
         reports

@@ -73,12 +73,7 @@
   // page or its AudioContext.
   const qmaOutput = { node: null, context: null };
   window.__westplayQmaOutput = qmaOutput;
-  // A radio player also embeds QQ's audio engine in a hidden cross-origin frame. Leave that route's audio
-  // native: taking only the top document's node can mute the stream, and the frame's node cannot be moved
-  // into the cab sound field from here.
-  const nativeRadioAudio = location.pathname.includes("player_radio");
   try {
-    if (nativeRadioAudio) throw 0;
     const connect = AudioNode.prototype.connect;
     AudioNode.prototype.connect = function (destination, ...rest) {
       if (
@@ -1905,5 +1900,17 @@
   if (role === "player") {
     setInterval(sayPlayback, 500);
     setInterval(attach, 1000);
+    setTimeout(() => {
+      const audio = findAudio();
+      post({
+        log: `player audio state ${JSON.stringify({
+          qma: qmaOutput.node?.constructor?.name ?? null,
+          context: qmaOutput.context?.state ?? null,
+          audio: audio?.tagName ?? null,
+          media: document.querySelectorAll("audio, video").length,
+          path: location.pathname,
+        })}`,
+      });
+    }, 2500);
   }
 })();

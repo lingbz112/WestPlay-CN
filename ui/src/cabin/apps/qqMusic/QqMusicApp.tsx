@@ -307,13 +307,13 @@ function TabPage({ tab, shown }: { tab: Tab; shown: boolean }) {
     case 'home':
       return <Home shown={shown} />
     case 'new':
-      return <New />
+      return <New shown={shown} />
     case 'radio':
-      return <Radio />
+      return <Radio shown={shown} />
     case 'library':
       return <Library />
     case 'search':
-      return <Search />
+      return <Search shown={shown} />
   }
 }
 

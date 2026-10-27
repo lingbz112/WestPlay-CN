@@ -1706,11 +1706,33 @@
   font-weight: 750;
 }
 
+.shell .am-up-next .am-queue-name {
+  margin: -2px 0 12px;
+  overflow: hidden;
+  font-size: calc(18px * var(--text-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .shell .am-up-next .am-song {
   border-bottom-color: color-mix(in srgb, var(--text) 14%, transparent);
 }
 
+.shell .am-up-next .am-queue-current {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
 .shell .am-up-next .am-song-by {
+  color: var(--text-dim);
+}
+
+.shell .am-up-next .am-queue-note {
+  margin: 16px 4px;
+  font-size: calc(16px * var(--text-scale, 1));
+  font-weight: 600;
   color: var(--text-dim);
 }
 

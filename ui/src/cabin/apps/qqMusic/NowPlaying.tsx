@@ -182,7 +182,7 @@ export function NowPlaying() {
               <button
                 type="button"
                 className={showQueue ? 'music-corner glass am-on' : 'music-corner glass'}
-                aria-label={words.upNext}
+                aria-label="目前播放列表"
                 aria-pressed={showQueue}
                 onClick={() => useQqMusic.setState({ queue: !showQueue, lyrics: false })}
               >
@@ -468,14 +468,26 @@ function Words({ playback, track }: { playback: Playback; track: AppleMusicTrack
   )
 }
 
-/** Up Next, in the cover's place: the songs to come (from where it plays). Pressed, one plays. */
+/** The current list, in the cover's place: the song playing and those after it. Pressed, one plays. */
 function UpNext({ playback }: { playback: Playback }) {
-  const text = useText()
+  const current = playback.tracks[playback.index]
   const next = playback.tracks.slice(playback.index + 1, playback.index + 30)
+  const station = playback.context?.kind === 'station'
   return (
     <div className="am-up-next">
-      <h3>{playback.context?.name ? text.appleMusic.from(playback.context.name) : text.appleMusic.upNext}</h3>
-      {next.length === 0 && <p className="am-empty">{text.appleMusic.empty}</p>}
+      <h3>目前播放列表</h3>
+      {playback.context?.name && <p className="am-queue-name">{playback.context.name}</p>}
+      {current && (
+        <button type="button" className="am-song am-queue-current" aria-current="true">
+          <span className="am-song-cover">
+            <Cover item={trackCover(current)} />
+          </span>
+          <span className="am-song-text">
+            <span className="am-song-name">{current.name}</span>
+            <span className="am-song-by">{current.artist}</span>
+          </span>
+        </button>
+      )}
       {next.map((song, i) => (
         <button key={`${song.id}:${i}`} type="button" className="am-song" onClick={() => jumpTo(i + 1)}>
           <span className="am-song-cover">
@@ -487,6 +499,8 @@ function UpNext({ playback }: { playback: Playback }) {
           </span>
         </button>
       ))}
+      {station && <p className="am-queue-note">下一首由 QQ 音乐电台服务器自动推荐</p>}
+      {!station && next.length === 0 && <p className="am-empty">没有下一首了</p>}
     </div>
   )
 }

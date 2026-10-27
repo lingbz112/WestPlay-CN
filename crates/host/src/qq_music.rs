@@ -323,11 +323,11 @@ impl QqMusic {
                         let _ = self.player.post_json(r#"{"action":"play"}"#);
                     }
                 }
-                Some(Message::Queued) => {
+                Some(Message::Queued { player }) => {
                     *self.pending_prepare.borrow_mut() = None;
                     self.pending_play.set(true);
-                    // The queue is in the shared profile; the player page reads it anew.
-                    let _ = self.player.navigate(PLAYER);
+                    // Songs share `playSongData`; a server-controlled radio has its own player route.
+                    let _ = self.player.navigate(player.as_deref().unwrap_or(PLAYER));
                     let _ = self.player.post_json(r#"{"action":"play"}"#);
                     reports.push(Report::Queued);
                 }
@@ -424,7 +424,7 @@ impl QqMusic {
 #[derive(Debug, PartialEq)]
 enum Message {
     Ready(Role),
-    Queued,
+    Queued { player: Option<String> },
     Click { x: f64, y: f64 },
     Drag { from_x: f64, from_y: f64, to_x: f64, to_y: f64 },
     Log(String),
@@ -443,7 +443,12 @@ fn read_message(message: &str) -> Option<Message> {
         return Some(Message::Ready(role));
     }
     if value.get("queued").and_then(serde_json::Value::as_bool) == Some(true) {
-        return Some(Message::Queued);
+        let player = value
+            .get("player")
+            .and_then(serde_json::Value::as_str)
+            .filter(|url| is_radio_player(url))
+            .map(str::to_owned);
+        return Some(Message::Queued { player });
     }
     if let Some(line) = value.get("log").and_then(serde_json::Value::as_str) {
         return Some(Message::Log(line.chars().take(400).collect()));
@@ -492,6 +497,12 @@ fn read_message(message: &str) -> Option<Message> {
     serde_json::from_value::<State>(state.clone()).ok().map(Message::State)
 }
 
+/// The one page the radio player may navigate to: a numeric QQ Music station id.
+fn is_radio_player(url: &str) -> bool {
+    url.strip_prefix("https://y.qq.com/n/ryqq_v2/player_radio#id=")
+        .is_some_and(|id| (1..=12).contains(&id.len()) && id.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
 /// `{"type":"qqMusic","signedIn":…,"playing":…,"signingIn":…,"avatar":…}`.
 pub fn state_message(state: Option<&State>, signing_in: bool) -> String {
     serde_json::json!({
@@ -524,7 +535,17 @@ mod tests {
     fn reads_ready_and_queued() {
         assert_eq!(read_message(r#"{"role":"player","ready":true}"#), Some(Message::Ready(Role::Player)));
         assert_eq!(read_message(r#"{"role":"browse","ready":true}"#), Some(Message::Ready(Role::Browse)));
-        assert_eq!(read_message(r#"{"role":"browse","queued":true}"#), Some(Message::Queued));
+        assert_eq!(read_message(r#"{"role":"browse","queued":true}"#), Some(Message::Queued { player: None }));
+        assert_eq!(
+            read_message(r#"{"role":"browse","queued":true,"player":"https://y.qq.com/n/ryqq_v2/player_radio#id=99"}"#),
+            Some(Message::Queued { player: Some("https://y.qq.com/n/ryqq_v2/player_radio#id=99".into()) })
+        );
+        assert_eq!(
+            read_message(
+                r#"{"role":"browse","queued":true,"player":"https://example.com/n/ryqq_v2/player_radio#id=99"}"#
+            ),
+            Some(Message::Queued { player: None })
+        );
     }
 
     #[test]

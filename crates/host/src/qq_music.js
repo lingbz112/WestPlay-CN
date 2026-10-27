@@ -14,7 +14,8 @@
     String(value ?? "")
       .replace(/\s+/g, " ")
       .trim();
-  const one = (selector, root = document) => root.querySelector(selector);
+  const one = (selector, root = document) =>
+    root?.querySelector(selector) ?? null;
   const all = (selector, root = document) => [
     ...root.querySelectorAll(selector),
   ];
@@ -283,7 +284,9 @@
     return found;
   };
   const enrichItems = async (list, most = 12) => {
-    const missing = list.filter((item) => missingCover(item.image)).slice(0, most);
+    const missing = list
+      .filter((item) => missingCover(item.image))
+      .slice(0, most);
     await Promise.all(
       missing.map(async (item) => {
         try {
@@ -327,22 +330,55 @@
     return page(sections);
   };
   const newPage = async () => {
+    const data = initialData(document);
+    const groups = data?.radio_list ?? data?.data?.radio_list;
+    if (Array.isArray(groups)) {
+      const sections = groups
+        .map((group) => {
+          const stations = (group?.list ?? [])
+            .map((station, index) => {
+              const id = Number(station?.id);
+              const name = norm(station?.title);
+              if (!id || !name) return null;
+              return {
+                id: `qq:radio:${id}`,
+                kind: "station",
+                name,
+                by: station?.listenNumStr
+                  ? `${station.listenNumStr} 人在听`
+                  : "",
+                note: "",
+                image: imageUrl(station?.pic_url),
+                wide: null,
+                color: ["#1c6b48", "#245b78", "#754e25", "#5d3974"][index % 4],
+                explicit: false,
+                live: false,
+              };
+            })
+            .filter(Boolean);
+          return stations.length
+            ? section(norm(group?.title), "shelf", stations, [])
+            : null;
+        })
+        .filter(Boolean);
+      if (sections.length) return page(sections);
+    }
     const sections = all(".radio__item")
       .map((group) => {
         const title = norm(
           one('h2, h3, .radio__title, [class*="title"]', group)?.textContent,
         );
-        const labels = all(".radio_list__item", group)
-          .map((label, index) => {
-            const name = norm(label.textContent);
+        const stations = all(".radio_list__item", group)
+          .map((item, index) => {
+            const name = norm(item.textContent);
             if (!name) return null;
             return {
-              id: `qq:radio:${encodeURIComponent(name)}`,
-              kind: "curator",
+              id: `qq:radio:name:${encodeURIComponent(name)}`,
+              kind: "station",
               name,
               by: "",
               note: "",
-              image: null,
+              image: imageOf(item),
               wide: null,
               color: ["#1c6b48", "#245b78", "#754e25", "#5d3974"][index % 4],
               explicit: false,
@@ -350,8 +386,8 @@
             };
           })
           .filter(Boolean);
-        return title && labels.length
-          ? section(title, "shelf", labels, [])
+        return title && stations.length
+          ? section(title, "shelf", stations, [])
           : null;
       })
       .filter(Boolean);
@@ -589,7 +625,11 @@
         const songs = [];
         let total = Infinity;
         let info = null;
-        for (let start = 0, page = 0; start < total && page < 12; start += 100, page++) {
+        for (
+          let start = 0, page = 0;
+          start < total && page < 12;
+          start += 100, page++
+        ) {
           const response = await within(
             request([
               {
@@ -632,7 +672,10 @@
             description: norm(info?.desc),
             genre: "",
             year: null,
-            tracks: await enrichTracks(tracksFromInitial({ songlist: songs }), 12),
+            tracks: await enrichTracks(
+              tracksFromInitial({ songlist: songs }),
+              12,
+            ),
           };
         }
       } catch {}
@@ -895,7 +938,12 @@
         "totalNum",
       );
       return {
-        items: rows.map(playlistFromApi).filter(Boolean),
+        items: rows
+          .map(playlistFromApi)
+          .filter(
+            (item) =>
+              item && !/^(我喜欢的音乐|我喜欢)$/.test(String(item.name)),
+          ),
         songs: [],
         sorts: [],
         sort: null,
@@ -1146,6 +1194,39 @@
           kind: command.kind || "playlist",
         }
       : null;
+    if (parts[1] === "radio") {
+      let id = parts[2] === "name" ? null : Number(parts[2]);
+      const label =
+        parts[2] === "name"
+          ? decodeURIComponent(parts.slice(3).join(":"))
+          : command.name;
+      if (!id && label) {
+        const data = initialData(document);
+        const groups = data?.radio_list ?? data?.data?.radio_list;
+        id = groups
+          ?.flatMap((group) => group.list ?? [])
+          .find((station) => norm(station.title) === label)?.id;
+      }
+      if (!id) return;
+      localStorage.setItem(
+        QUEUE_META,
+        JSON.stringify({
+          context: {
+            id: `qq:radio:${id}`,
+            name: command.name || label || "QQ 音乐电台",
+            kind: "station",
+          },
+          at: Date.now(),
+          count: 1,
+        }),
+      );
+      post({
+        queued: true,
+        player: `${ORIGIN}/n/ryqq_v2/player_radio#id=${id}`,
+        track: tracks()[0] ?? null,
+      });
+      return;
+    }
     if (parts[1] === "track" || Array.isArray(command.songs)) {
       const ids =
         Array.isArray(command.songs) && command.songs.length
@@ -1280,6 +1361,20 @@
     };
   };
   const musicInfo = () => {
+    if (location.pathname.includes("player_radio")) {
+      const title = norm(one(".player_radio__song")?.textContent);
+      const artist = norm(one(".player_radio__author")?.textContent);
+      return {
+        title,
+        artist,
+        text: [title, artist].filter(Boolean).join(" - "),
+        href:
+          one(
+            'a[href*="/songDetail/"]',
+            one(".player_radio__content"),
+          )?.getAttribute("href") ?? "",
+      };
+    }
     const info = one(".player_music__info");
     const links = all("a", info ?? document);
     const titleLink = links.find((link) =>
@@ -1301,11 +1396,19 @@
   };
   const currentPlayback = () => {
     const audio = findAudio();
+    const radio = location.pathname.includes("player_radio");
     const info = musicInfo();
-    const time = pair(one(".player_music__time")?.textContent);
-    const cover =
-      background(one(".bg_player")) ??
-      imageOf(one(".player_music__info, .player_music"));
+    const time = radio
+      ? {
+          position: parseTime(one(".player_now_time")?.textContent),
+          duration: parseTime(one(".player_total_time")?.textContent),
+        }
+      : pair(one(".player_music__time")?.textContent);
+    const cover = radio
+      ? (imageOf(one(".player_radio__cover")) ??
+        background(one(".player_radio__cover")))
+      : (background(one(".bg_player")) ??
+        imageOf(one(".player_music__info, .player_music")));
     const mid = idOf(info.href, "track");
     const rows = tracks();
     const savedValue = (() => {
@@ -1336,37 +1439,52 @@
         ? savedIndex
         : Math.max(0, Number(savedValue?.index) || 0);
     const savedCurrent = trackFromRaw(rawQueue[queueIndex], queueIndex);
-    const current =
-      rows.find((row) => norm(info.text).startsWith(norm(row.name))) ??
-      rows.find(
-        (row) =>
-          norm(row.name) === norm(info.title) &&
-          norm(row.artist) === norm(info.artist),
-      ) ??
-      rows.find((row) => norm(row.name) === norm(info.title)) ??
-      savedCurrent ??
-      null;
+    const playedDuration =
+      Number.isFinite(audio?.duration) && Number(audio?.duration) > 0
+        ? Number(audio.duration)
+        : time.duration;
+    const current = radio
+      ? null
+      : (rows.find((row) => norm(info.text).startsWith(norm(row.name))) ??
+        rows.find(
+          (row) =>
+            norm(row.name) === norm(info.title) &&
+            norm(row.artist) === norm(info.artist),
+        ) ??
+        rows.find((row) => norm(row.name) === norm(info.title)) ??
+        savedCurrent ??
+        null);
     const liked =
       /btn_big_like--like|btn_big_like[^"' ]*[^"' ]*(?:liked|active)/i.test(
         one(".btn_big_like")?.className ?? "",
       );
-    const next = rawQueue
-      .slice(queueIndex + 1, queueIndex + 31)
-      .map((song, index) => trackFromRaw(song, queueIndex + index + 1))
-      .filter(Boolean);
+    const radioLiked =
+      /btn_like--like|btn_like[^"' ]*[^"' ]*(?:liked|active)/i.test(
+        one(".btn_like")?.className ?? "",
+      );
+    const next = radio
+      ? []
+      : rawQueue
+          .slice(queueIndex + 1, queueIndex + 31)
+          .map((song, index) => trackFromRaw(song, queueIndex + index + 1))
+          .filter(Boolean);
     const track =
       current ??
       (info.title
         ? {
-            id: mid ? `qq:track:${mid}` : `qq:current:${info.title}`,
+            id: mid
+              ? `qq:track:${mid}`
+              : radio
+                ? `qq:radio-current:${info.title}`
+                : `qq:current:${info.title}`,
             name: info.title,
             artist: info.artist,
             album: "",
             image: cover ?? DEFAULT_IMAGE,
             color: COLOR,
-            duration: audio?.duration || time.duration,
+            duration: playedDuration,
             explicit: false,
-            favorite: liked,
+            favorite: radio ? radioLiked : liked,
           }
         : null);
     if (!track) return null;
@@ -1374,7 +1492,9 @@
     const mode = norm(
       one('.btn_big_only, [class*="loop"], [class*="mode"]')?.textContent,
     );
-    const volumeBar = one(".player_voice .player_progress__inner");
+    const volumeBar = one(
+      ".player_voice .player_progress__inner, .player_radio__voice .player_progress__inner",
+    );
     const volumeBox = volumeBar?.getBoundingClientRect();
     const volumeFill = volumeBar
       ? one(".player_progress__play", volumeBar)
@@ -1393,18 +1513,21 @@
       track: {
         ...track,
         image: cover ?? track.image,
-        duration: audio?.duration || time.duration || track.duration,
-        favorite: liked,
+        duration: playedDuration || track.duration,
+        favorite: radio ? radioLiked : liked,
       },
       context: savedMeta?.context ?? {
-        id: "qq:player",
-        name: "QQ Music",
-        kind: "playlist",
+        id: radio ? "qq:radio" : "qq:player",
+        name: radio ? "QQ 音乐电台" : "QQ Music",
+        kind: radio ? "station" : "playlist",
       },
       playing: audio ? !audio.paused && !audio.ended : playing(),
       loading: false,
-      position: audio?.currentTime || time.position,
-      duration: audio?.duration || time.duration || track.duration,
+      position:
+        Number.isFinite(audio?.currentTime) && Number(audio?.currentTime) > 0
+          ? Number(audio.currentTime)
+          : time.position,
+      duration: playedDuration || track.duration,
       preview: false,
       shuffle: /随机|shuffle/i.test(mode),
       repeat: /单曲|one/i.test(mode)
@@ -1516,15 +1639,15 @@
     play() {
       const audio = findAudio();
       if (audio && audio.paused) return void audio.play().catch(() => {});
-      if (!playing()) click(".btn_big_play");
+      if (!playing()) click(".btn_big_play, .btn_play");
     },
     pause() {
       const audio = findAudio();
       if (audio && !audio.paused) return void audio.pause();
-      if (playing()) click(".btn_big_play");
+      if (playing()) click(".btn_big_play, .btn_play");
     },
     next() {
-      click(".btn_big_next");
+      click(".btn_big_next, .js_play_next");
     },
     previous() {
       click(".btn_big_prev");
@@ -1575,7 +1698,7 @@
       button?.click();
     },
     favorite() {
-      click(".btn_big_like");
+      click(".btn_big_like, .btn_like");
     },
     add() {},
   };

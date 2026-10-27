@@ -154,8 +154,8 @@ export function Home({ shown }: { shown: boolean }) {
   )
 }
 
-export function New() {
-  const asked = useAsked({ ask: 'new' })
+export function New({ shown }: { shown: boolean }) {
+  const asked = useAsked(shown ? { ask: 'new' } : null)
   return (
     <Answered asked={asked} title="雷达">
       {(page) => (
@@ -167,8 +167,8 @@ export function New() {
   )
 }
 
-export function Radio() {
-  const asked = useAsked({ ask: 'radio' })
+export function Radio({ shown }: { shown: boolean }) {
+  const asked = useAsked(shown ? { ask: 'radio' } : null)
   return (
     <Answered asked={asked} title="分类歌单">
       {(page) => (
@@ -252,10 +252,10 @@ function LibraryRowGlyph({ shelf }: { shelf: AppleMusicShelf }) {
 
 /** Search's own page: the field is in the app's bar; under it, what was searched lately and Apple Music's
  * categories. */
-export function Search() {
+export function Search({ shown = true }: { shown?: boolean }) {
   const text = useText()
   const recent = useQqMusic((state) => state.recent)
-  const asked = useAsked({ ask: 'browse' })
+  const asked = useAsked(shown ? { ask: 'browse' } : null)
   return (
     <Scroll title="搜索">
       {recent.length > 0 && (

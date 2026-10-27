@@ -77,6 +77,16 @@ process. Creating two environments on one profile makes WebView2 fail with `ERRO
 - This is an unofficial integration. QQ Music's terms, account rules and content rights still apply; do not
   redistribute audio or account data.
 
+## In-game fixes
+
+- Seek and volume do not use synthetic DOM mouse events. The player page has no `<audio>` element in the
+  tested mode, so the host sends WebView2 `SendMouseInput` at the page's own progress/volume coordinates:
+  a click for seeking, a drag for volume.
+- The Library page is opened in the hidden browser and read after QQ Music's own client script has drawn
+  it; fetching its initial HTML only gives an empty shell.
+- Home and search songs whose `<img>` is the lazy placeholder are enriched from each song's JSON-LD
+  `MusicRecording.image`, which is the real album cover.
+
 ## Try it
 
 From this repository:

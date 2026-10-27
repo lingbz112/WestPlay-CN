@@ -298,6 +298,7 @@
    */
   const enrichTracks = async (list, most = 16) => {
     const missing = list.filter((track) => missingCover(track.image)).slice(0, most)
+    if (missing.length) post({ log: `covers missing ${missing.length}/${list.length}` })
     await Promise.all(
       missing.map(async (track) => {
         const mid = String(track.id).split(':').pop()
@@ -322,6 +323,7 @@
         } catch {}
       }),
     )
+    if (missing.length) post({ log: `covers done ${missing.length}/${list.length}` })
     return list
   }
   const collectionAnswer = async (id) => {
@@ -428,6 +430,7 @@
     // The Library is drawn by QQ Music's own client script; its fetched HTML is only a shell. Open it in
     // this hidden browser and read the live page. The host re-asks after the navigation.
     if (!location.pathname.includes('/profile')) {
+      post({ log: `library opening from ${location.pathname}` })
       location.href = `${ORIGIN}/n/ryqq_v2/profile`
       return null
     }
@@ -439,6 +442,9 @@
       if (ready) break
       await sleep(250)
     }
+    post({
+      log: `library path=${location.pathname} playlists=${all('a[href*="/playlist/"]', document).length} songs=${all('.songlist__item, [class*="songlist__item"]', document).length}`,
+    })
     const listed =
       shelf === 'albums' ? items('album') : shelf === 'artists' ? items('artist') : items('playlist')
     return {
@@ -697,6 +703,8 @@
     return false
   }
   const clickAt = (x, y) => post({ click: { x, y } })
+  const fire = (element, type, x, y, buttons = 0) =>
+    element?.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, buttons }))
   const seek = (seconds) => {
     const audio = findAudio()
     if (audio) {
@@ -705,10 +713,18 @@
     }
     const bar = one('.player_progress__inner')
     const duration = currentPlayback()?.duration || 0
-    if (!bar || !duration) return
+    if (!bar || !duration) {
+      post({ log: `seek no bar=${Boolean(bar)} duration=${Math.round(duration)}` })
+      return
+    }
     const box = bar.getBoundingClientRect()
     const x = box.left + Math.max(0, Math.min(1, seconds / duration)) * box.width
-    clickAt(x, box.top + box.height / 2)
+    const y = box.top + box.height / 2
+    post({ log: `seek ${Math.round(seconds)}s at ${Math.round(x)},${Math.round(y)}` })
+    clickAt(x, y)
+    // Fallback for a hidden composition view that does not take native input: the page's own
+    // onClick is on the outer progress bar, not on its inner line.
+    fire(bar.closest('.player_progress') ?? bar, 'click', x, y)
   }
   const setVolume = (share) => {
     const audio = findAudio()
@@ -717,19 +733,32 @@
       return
     }
     const bar = one('.player_voice .player_progress__inner')
-    if (!bar) return
+    if (!bar) {
+      post({ log: 'volume no bar' })
+      return
+    }
     const box = bar.getBoundingClientRect()
     const fill = one('.player_progress__play', bar)
     const current = fill && box.width ? Math.max(0, Math.min(1, fill.getBoundingClientRect().width / box.width)) : 0
     const y = box.top + box.height / 2
+    const fromX = box.left + current * box.width
+    const toX = box.left + Math.max(0, Math.min(1, share)) * box.width
+    const dot = one('.player_progress__dot', bar)
+    post({ log: `volume ${Math.round(share * 100)}% at ${Math.round(toX)},${Math.round(y)}` })
     post({
       drag: {
-        fromX: box.left + current * box.width,
+        fromX,
         fromY: y,
-        toX: box.left + Math.max(0, Math.min(1, share)) * box.width,
+        toX,
         toY: y,
       },
     })
+    // The same drag as the page itself: the dot's onMouseDown starts it, then the document's move/up
+    // finish it. The outer bar's onClick is a second fallback.
+    fire(dot ?? bar, 'mousedown', fromX, y, 1)
+    fire(document, 'mousemove', toX, y, 1)
+    fire(document, 'mouseup', toX, y)
+    fire(bar.closest('.player_progress') ?? bar, 'click', toX, y)
   }
   const CONTROLS = {
     play() {

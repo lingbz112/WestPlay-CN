@@ -259,6 +259,10 @@ impl QqMusic {
                 self.pending_play.set(true);
                 self.browse.post_json(&prepare)
             }
+            Command::Seek { .. } | Command::Volume { .. } => {
+                log!("[qq music] command {}", serde_json::to_string(command).unwrap_or_default());
+                self.player.post_json(&serde_json::to_string(command).unwrap_or_default())
+            }
             _ => self.player.post_json(&serde_json::to_string(command).unwrap_or_default()),
         }
     }
@@ -327,6 +331,7 @@ impl QqMusic {
                 Some(Message::Click { x, y }) => {
                     let point =
                         POINT { x: x.clamp(0.0, 10_000.0).round() as i32, y: y.clamp(0.0, 10_000.0).round() as i32 };
+                    log!("[qq music] native click at {},{}", point.x, point.y);
                     let _ = self.player.send_mouse(
                         COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
                         COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
@@ -353,6 +358,7 @@ impl QqMusic {
                     };
                     let from = point(from_x, from_y);
                     let to = point(to_x, to_y);
+                    log!("[qq music] native drag {},{} -> {},{}", from.x, from.y, to.x, to.y);
                     let _ = self.player.send_mouse(
                         COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
                         COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
@@ -382,6 +388,7 @@ impl QqMusic {
                         to,
                     );
                 }
+                Some(Message::Log(line)) => log!("[qq music] {line}"),
                 Some(Message::State(state)) => reports.push(Report::State(state)),
                 Some(Message::Answer(answer)) => {
                     self.unanswered.borrow_mut().answered(answer.answer);
@@ -417,6 +424,7 @@ enum Message {
     Queued,
     Click { x: f64, y: f64 },
     Drag { from_x: f64, from_y: f64, to_x: f64, to_y: f64 },
+    Log(String),
     State(State),
     Answer(Box<Answer>),
     Playback(Option<Box<Playback>>),
@@ -433,6 +441,9 @@ fn read_message(message: &str) -> Option<Message> {
     }
     if value.get("queued").and_then(serde_json::Value::as_bool) == Some(true) {
         return Some(Message::Queued);
+    }
+    if let Some(line) = value.get("log").and_then(serde_json::Value::as_str) {
+        return Some(Message::Log(line.chars().take(400).collect()));
     }
     if let Some(click) = value.get("click") {
         let x = click.get("x")?.as_f64()?;

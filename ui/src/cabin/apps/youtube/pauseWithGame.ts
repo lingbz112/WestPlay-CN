@@ -1,6 +1,6 @@
 import type { YouTubeState } from '../../../shared/host'
 import { type MusicPlayer, pauseMusicWithGame } from '../musicWithGame'
-import { command, setVolume, useYouTube } from './youtube'
+import { command, nextVideo, play, previousVideo, setVolume, useYouTube } from './youtube'
 
 /** A video playing, or about to (buffering). */
 function isPlaying(state: YouTubeState | null): boolean {
@@ -13,6 +13,16 @@ export const youtubePlayer: MusicPlayer = {
   playingHere: () => isPlaying(useYouTube.getState().state),
   pauseHere: () => command({ action: 'pause' }),
   resumeHere: () => command({ action: 'play' }),
+  skipHere: (direction) => {
+    if (direction === 1) {
+      const next = nextVideo()
+      if (next) play(next, false)
+      return
+    }
+    const before = previousVideo()
+    if ((useYouTube.getState().state?.time ?? 0) > 5 || !before) command({ action: 'seek', seconds: 0 })
+    else play(before, false)
+  },
   // The volume every video plays at (none while muted).
   volume: () => {
     const { volume, muted } = useYouTube.getState()

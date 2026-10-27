@@ -5,7 +5,7 @@ import type { MusicPlayer } from './musicWithGame'
 /** A player at `volume`, playing here or not; `start()` as it begins playing here. */
 function player(volume: number | null, playing = false) {
   const listeners = new Set<(started: boolean) => void>()
-  const state = { playing, volume, pauses: 0, resumes: 0 }
+  const state = { playing, volume, pauses: 0, resumes: 0, skips: [] as (1 | -1)[] }
   const it: MusicPlayer = {
     name: `player-${Math.random()}`,
     playingHere: () => state.playing,
@@ -17,6 +17,7 @@ function player(volume: number | null, playing = false) {
       state.playing = true
       state.resumes += 1
     },
+    skipHere: (direction) => state.skips.push(direction),
     volume: () => state.volume,
     sendVolume: () => {},
     setVolume: (share) => {
@@ -67,6 +68,16 @@ describe('keybinds', () => {
     expect(spotify.state.resumes).toBe(0)
     spotify.start()
     expect(binds.press('volumeUp')).toBeNull()
+  })
+
+  it('skips the current player to its previous or next track', () => {
+    const spotify = player(0.5)
+    const youtube = player(0.8, true)
+    const binds = keybinds([spotify.it, youtube.it])
+    binds.press('previousTrack')
+    binds.press('nextTrack')
+    expect(spotify.state.skips).toEqual([])
+    expect(youtube.state.skips).toEqual([-1, 1])
   })
 
   it('stops following the players once stopped', () => {

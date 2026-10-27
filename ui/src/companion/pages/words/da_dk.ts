@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: 'Lydstyrke op',
     volumeDown: 'Lydstyrke ned',
     playPause: 'Afspil/Pause',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Tryk på en tast…',
     keybindsNote:
       'Klik på en genvej, og tryk så på den nye tast. Holder du {key} nede imens, virker den kun, mens du bruger skærmen. Esc annullerer.',

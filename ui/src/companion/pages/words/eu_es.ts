@@ -95,6 +95,8 @@ export const words: CompanionWords = {
     volumeUp: 'Igo bolumena',
     volumeDown: 'Jaitsi bolumena',
     playPause: 'Erreproduzitu/Pausatu',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Sakatu tekla bat…',
     keybindsNote:
       'Egin klik lasterbide batean eta sakatu tekla berria. Sakatzean {key} eusten badiozu, pantaila erabiltzen duzun bitartean bakarrik dabil. Esc-ek bertan behera uzten du.',

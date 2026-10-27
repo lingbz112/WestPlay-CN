@@ -195,13 +195,15 @@ impl<'de> Deserialize<'de> for KeyCode {
 }
 
 /// The keys for what WestPlay does from the game (owner 2026-10-21: every keybind customizable in the
-/// companion): the playing app's volume up and down a step, and play or pause it.
+/// companion): the playing app's volume up and down a step, play or pause, and the previous or next track.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keybinds {
     pub volume_up: Binding,
     pub volume_down: Binding,
     pub play_pause: Binding,
+    pub previous_track: Binding,
+    pub next_track: Binding,
 }
 
 impl<'de> Deserialize<'de> for Keybinds {
@@ -217,16 +219,25 @@ impl<'de> Deserialize<'de> for Keybinds {
             volume_up: binding("volumeUp", defaults.volume_up),
             volume_down: binding("volumeDown", defaults.volume_down),
             play_pause: binding("playPause", defaults.play_pause),
+            previous_track: binding("previousTrack", defaults.previous_track),
+            next_track: binding("nextTrack", defaults.next_track),
         })
     }
 }
 
 impl Default for Keybinds {
-    /// The interaction key with 1, 2 and 3 (as promised to the players who asked: Alt+1, Alt+2, Alt+3), in a
-    /// row as on a stereo (owner 2026-10-21): volume down, play/pause between, volume up.
+    /// Volume down, play/pause and volume up are the interaction key with 1, 2 and 3 (as promised to the
+    /// players who asked: Alt+1, Alt+2, Alt+3). Track keys use the keyboard's own media keys, alone, so they
+    /// work anywhere in the game and do not claim a driving key.
     fn default() -> Self {
         let with_key = |code| Binding { key: KeyCode(code), with_interaction_key: true };
-        Self { volume_down: with_key(0x31), play_pause: with_key(0x32), volume_up: with_key(0x33) }
+        Self {
+            volume_down: with_key(0x31),
+            play_pause: with_key(0x32),
+            volume_up: with_key(0x33),
+            previous_track: Binding { key: KeyCode(0xb1), with_interaction_key: false },
+            next_track: Binding { key: KeyCode(0xb0), with_interaction_key: false },
+        }
     }
 }
 
@@ -238,6 +249,8 @@ impl Keybinds {
                 Keybind::VolumeUp => self.volume_up,
                 Keybind::VolumeDown => self.volume_down,
                 Keybind::PlayPause => self.play_pause,
+                Keybind::PreviousTrack => self.previous_track,
+                Keybind::NextTrack => self.next_track,
             };
             keybind_value(binding.key.virtual_key(), binding.with_interaction_key)
         })
@@ -473,6 +486,13 @@ mod tests {
         assert_eq!(
             [partial.keybinds.volume_down, partial.keybinds.play_pause, partial.keybinds.volume_up],
             [with_key(0x31), with_key(0x32), with_key(0x33)]
+        );
+        assert_eq!(
+            [partial.keybinds.previous_track, partial.keybinds.next_track],
+            [
+                Binding { key: KeyCode::new(0xb1).unwrap(), with_interaction_key: false },
+                Binding { key: KeyCode::new(0xb0).unwrap(), with_interaction_key: false },
+            ]
         );
         // Files from before the truck strip was a setting keep it on Auto.
         assert_eq!(partial.screen.truck_strip, TruckStrip::Auto);

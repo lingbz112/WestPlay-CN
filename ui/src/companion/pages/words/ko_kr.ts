@@ -93,6 +93,8 @@ export const words: CompanionWords = {
     volumeUp: '볼륨 높이기',
     volumeDown: '볼륨 낮추기',
     playPause: '재생/일시 정지',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: '키를 누르세요…',
     keybindsNote:
       '키 설정을 클릭한 다음 새 키를 누르세요. {key} 키를 누른 채로 누르면 화면을 사용하는 동안에만 작동합니다. Esc를 누르면 취소됩니다.',

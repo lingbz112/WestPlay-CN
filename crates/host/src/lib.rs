@@ -1816,12 +1816,15 @@ fn stops_message(id: Option<u32>, route: Option<&[u64]>, waypoints: &[u64], hidd
 /// The most presses of a keybind the page is told of at once.
 const MOST_KEYBIND_PRESSES: u32 = 10;
 
-/// `{"type":"keybind","action":"volumeUp"|"volumeDown"|"playPause"}`: the player pressed a keybind in the game.
+/// `{"type":"keybind","action":"volumeUp"|"volumeDown"|"playPause"|"previousTrack"|"nextTrack"}`: the player
+/// pressed a keybind in the game.
 fn keybind_message(keybind: Keybind) -> String {
     let action = match keybind {
         Keybind::VolumeUp => "volumeUp",
         Keybind::VolumeDown => "volumeDown",
         Keybind::PlayPause => "playPause",
+        Keybind::PreviousTrack => "previousTrack",
+        Keybind::NextTrack => "nextTrack",
     };
     serde_json::json!({ "type": "keybind", "action": action }).to_string()
 }
@@ -2507,5 +2510,17 @@ mod tests {
         assert_eq!(screen_message(0), r#"{"layout":null,"type":"screen"}"#);
         assert_eq!(screen_message(1), r#"{"layout":"generic","type":"screen"}"#);
         assert_eq!(screen_message(999), r#"{"layout":null,"type":"screen"}"#);
+    }
+
+    #[test]
+    fn keybind_messages_include_track_skipping() {
+        assert_eq!(
+            super::keybind_message(super::Keybind::PreviousTrack),
+            r#"{"action":"previousTrack","type":"keybind"}"#
+        );
+        assert_eq!(
+            super::keybind_message(super::Keybind::NextTrack),
+            r#"{"action":"nextTrack","type":"keybind"}"#
+        );
     }
 }

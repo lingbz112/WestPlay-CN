@@ -55,11 +55,11 @@ export const DEFAULT_KEY = KEY_PRESETS.leftAlt
 /** Mirrors `westplay_host::settings::InteractionMode`. */
 export type InteractionMode = 'hold' | 'toggle'
 
-/** Mirrors `westplay_host::settings::Keybinds`: the playing music's volume up and down, and play/pause. */
-export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause'
+/** Mirrors `westplay_host::settings::Keybinds`: volume, play/pause and track skipping. */
+export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause' | 'previousTrack' | 'nextTrack'
 
-/** In a row as their default keys are (1, 2, 3), as on a stereo: volume down, play/pause, volume up. */
-export const KEYBIND_IDS: KeybindId[] = ['volumeDown', 'playPause', 'volumeUp']
+/** In transport order: previous, volume down, play/pause, volume up, next. */
+export const KEYBIND_IDS: KeybindId[] = ['previousTrack', 'volumeDown', 'playPause', 'volumeUp', 'nextTrack']
 
 /** Mirrors `westplay_host::settings::Binding`: a key, pressed alone or while using the screen (holding its
  * key, or toggled on). */

@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: 'Äänenvoimakkuus ylös',
     volumeDown: 'Äänenvoimakkuus alas',
     playPause: 'Toista/Tauko',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Paina näppäintä…',
     keybindsNote:
       'Napsauta pikanäppäintä ja paina sitten uutta näppäintä. Jos pidät samalla {key} pohjassa, se toimii vain näyttöä käyttäessäsi. Esc peruuttaa.',

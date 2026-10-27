@@ -93,6 +93,8 @@ export const words: CompanionWords = {
     volumeUp: 'Zosilniť',
     volumeDown: 'Stíšiť',
     playPause: 'Prehrať/Pozastaviť',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Stlačte kláves…',
     keybindsNote:
       'Kliknite na skratku a stlačte nový kláves. Ak pritom držíte {key}, funguje len pri používaní obrazovky. Esc zruší.',

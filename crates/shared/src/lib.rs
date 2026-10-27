@@ -27,7 +27,7 @@ pub fn bridge_name() -> String {
     format!("Local\\WestPlay.Bridge.v{BRIDGE_VERSION}")
 }
 pub const BRIDGE_MAGIC: u32 = u32::from_le_bytes(*b"WPB7");
-pub const BRIDGE_VERSION: u32 = 24;
+pub const BRIDGE_VERSION: u32 = 25;
 
 /// Size of the app's frames, and the base size of the screen textures in the mod (`westplay_setup::game_mod`
 /// builds them from these).
@@ -365,13 +365,21 @@ pub enum Keybind {
     VolumeUp = 0,
     VolumeDown = 1,
     PlayPause = 2,
+    PreviousTrack = 3,
+    NextTrack = 4,
 }
 
 impl Keybind {
-    pub const ALL: [Keybind; KEYBIND_COUNT] = [Keybind::VolumeUp, Keybind::VolumeDown, Keybind::PlayPause];
+    pub const ALL: [Keybind; KEYBIND_COUNT] = [
+        Keybind::VolumeUp,
+        Keybind::VolumeDown,
+        Keybind::PlayPause,
+        Keybind::PreviousTrack,
+        Keybind::NextTrack,
+    ];
 }
 
-pub const KEYBIND_COUNT: usize = 3;
+pub const KEYBIND_COUNT: usize = 5;
 
 /// A keybind as the bridge carries it: its key's virtual-key code, and whether it's pressed while holding the
 /// interaction key (using the screen) rather than alone.

@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: 'Głośniej',
     volumeDown: 'Ciszej',
     playPause: 'Odtwórz/Wstrzymaj',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Naciśnij klawisz…',
     keybindsNote:
       'Kliknij skrót, a potem naciśnij nowy klawisz. Jeśli przytrzymasz przy tym {key}, zadziała tylko podczas używania ekranu. Esc anuluje.',

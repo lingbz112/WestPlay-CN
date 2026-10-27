@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: 'Höj volymen',
     volumeDown: 'Sänk volymen',
     playPause: 'Spela/Pausa',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Tryck på en tangent…',
     keybindsNote:
       'Klicka på ett kortkommando och tryck sedan på den nya tangenten. Håller du ned {key} samtidigt fungerar det bara medan du använder skärmen. Esc avbryter.',

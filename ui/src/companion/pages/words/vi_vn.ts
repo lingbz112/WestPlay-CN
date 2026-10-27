@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: 'Tăng âm lượng',
     volumeDown: 'Giảm âm lượng',
     playPause: 'Phát/Tạm dừng',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Nhấn một phím…',
     keybindsNote:
       'Nhấp vào một phím tắt, rồi nhấn phím mới. Nếu giữ {key} khi nhấn, phím tắt chỉ hoạt động khi bạn đang dùng màn hình. Esc để hủy.',

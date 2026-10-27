@@ -95,6 +95,8 @@ export const words: CompanionWords = {
     volumeUp: 'Αύξηση έντασης',
     volumeDown: 'Μείωση έντασης',
     playPause: 'Αναπαραγωγή/Παύση',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Πατήστε ένα πλήκτρο…',
     keybindsNote:
       'Κάντε κλικ σε μια συντόμευση και πατήστε το νέο πλήκτρο. Αν κρατάτε το {key} ενώ το πατάτε, λειτουργεί μόνο όσο χρησιμοποιείτε την οθόνη. Το Esc ακυρώνει.',

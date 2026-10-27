@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: 'Гучніше',
     volumeDown: 'Тихіше',
     playPause: 'Відтворення/Пауза',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Натисніть клавішу…',
     keybindsNote:
       'Клацніть сполучення й натисніть нову клавішу. Якщо при цьому утримувати {key}, воно працює лише поки ви користуєтеся екраном. Esc — скасувати.',

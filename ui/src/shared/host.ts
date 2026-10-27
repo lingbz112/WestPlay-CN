@@ -86,8 +86,8 @@ export interface JobInfo {
   income: number
 }
 
-/** What a keybind does: the music's volume a step up or down, or it paused or played on. */
-export type KeybindAction = 'volumeUp' | 'volumeDown' | 'playPause'
+/** What a keybind does: the music's volume a step up or down, play/pause, or the previous or next track. */
+export type KeybindAction = 'volumeUp' | 'volumeDown' | 'playPause' | 'previousTrack' | 'nextTrack'
 
 export type HostMessage =
   | { type: 'telemetry'; data: Telemetry }

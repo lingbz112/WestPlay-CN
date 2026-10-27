@@ -16,6 +16,7 @@ function player(playing = false) {
     resumeHere: () => {
       state.playing = true
     },
+    skipHere: () => {},
     volume: () => null,
     sendVolume: () => {},
     setVolume: () => {},

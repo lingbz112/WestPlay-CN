@@ -1,8 +1,9 @@
-//! The player's keybinds (the app's settings, through the bridge): volume up, volume down, play/pause.
+//! The player's keybinds (the app's settings, through the bridge): volume up, volume down, play/pause,
+//! previous track and next track.
 //!
-//! Each press of a bound key, in the game with WestPlay on its screen, is counted for the app, which acts on
-//! it. A binding with the interaction key counts only while the player uses the screen (the key held, or
-//! toggled on); one without it counts whenever, but not while the player types into WestPlay. While its
+//! Each press of a bound key while the game is in front is counted for the app, which acts on it. A binding
+//! with the interaction key counts only while the player uses WestPlay's screen (the key held, or toggled
+//! on); one without it counts anywhere in the game, but not while the player types into WestPlay. While its
 //! binding counts, a bound key is kept from the game (the `keyboard` module asks [`taken`]), so the game
 //! never acts on it too. A mouse button bound is left to the game: it reads the mouse through DirectInput,
 //! and leaves its side buttons unbound.
@@ -42,10 +43,14 @@ pub fn on_frame() {
     }
 }
 
-/// Whether a binding counts now: with WestPlay on the screen, and either the screen in use (one with the
-/// interaction key) or the player not typing into WestPlay (one without it).
+/// Whether a binding counts now: one with the interaction key while the screen is in use, or one without it
+/// anywhere in the game while the player isn't typing into WestPlay.
 fn counts(with_interaction_key: bool) -> bool {
-    bridge::screen_on() && if with_interaction_key { input::interaction_active() } else { !typing::typing() }
+    if with_interaction_key {
+        bridge::screen_on() && input::interaction_active()
+    } else {
+        !typing::typing()
+    }
 }
 
 /// Whether the game is kept from `key` (a virtual-key code; the generic Shift, Ctrl and Alt stand for both

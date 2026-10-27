@@ -93,6 +93,8 @@ export const words: CompanionWords = {
     volumeUp: 'Skaļāk',
     volumeDown: 'Klusāk',
     playPause: 'Atskaņot/Pauze',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Nospiediet taustiņu…',
     keybindsNote:
       'Noklikšķiniet uz īsinājuma un nospiediet jauno taustiņu. Ja tikmēr turat {key}, tas darbojas tikai, kamēr lietojat ekrānu. Esc atceļ.',

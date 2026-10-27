@@ -94,6 +94,8 @@ export const words: CompanionWords = {
     volumeUp: '音量を上げる',
     volumeDown: '音量を下げる',
     playPause: '再生/一時停止',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'キーを押してください…',
     keybindsNote:
       '割り当てをクリックして、新しいキーを押します。{key}を押しながら押すと、画面を操作している間だけ使えます。Escでキャンセル。',

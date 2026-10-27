@@ -93,6 +93,8 @@ export const words: CompanionWords = {
     volumeUp: 'Glasneje',
     volumeDown: 'Tiše',
     playPause: 'Predvajaj/Premor',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Pritisnite tipko…',
     keybindsNote:
       'Kliknite bližnjico in pritisnite novo tipko. Če ob tem držite {key}, deluje le med uporabo zaslona. Esc prekliče.',

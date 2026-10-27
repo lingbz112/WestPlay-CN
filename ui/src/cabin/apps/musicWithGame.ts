@@ -16,6 +16,8 @@ export interface MusicPlayer {
   playingHere(): boolean
   pauseHere(): void
   resumeHere(): void
+  /** Goes to the previous (-1) or next (1) track, as the player's own buttons do. */
+  skipHere(direction: 1 | -1): void
   /** The volume it plays at here (0 to 1), as the player chose it; `null` if there's none to set. */
   volume(): number | null
   /** Sets the volume it plays at (0 to 1) without making it the player's choice: for a fade. */

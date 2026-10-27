@@ -93,6 +93,8 @@ export const words: CompanionWords = {
     volumeUp: 'Sesi aç',
     volumeDown: 'Sesi kıs',
     playPause: 'Oynat/Duraklat',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Bir tuşa bas…',
     keybindsNote:
       'Bir tuş atamasına tıkla, sonra yeni tuşuna bas. Basarken {key} tuşunu basılı tutarsan yalnızca ekranı kullanırken çalışır. Esc iptal eder.',

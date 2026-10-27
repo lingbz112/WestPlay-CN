@@ -92,6 +92,8 @@ export const words: CompanionWords = {
     volumeUp: '调高音量',
     volumeDown: '调低音量',
     playPause: '播放/暂停',
+    previousTrack: '上一曲',
+    nextTrack: '下一曲',
     pressKey: '请按一个键…',
     keybindsNote: '点击一个按键绑定，然后按下新键。按下时按住 {key}，它就只在使用屏幕时生效。按 Esc 取消。',
     inUse: '该键已用于“{action}”。',

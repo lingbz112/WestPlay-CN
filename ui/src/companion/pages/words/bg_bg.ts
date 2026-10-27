@@ -93,6 +93,8 @@ export const words: CompanionWords = {
     volumeUp: 'Усилване',
     volumeDown: 'Намаляване',
     playPause: 'Пускане/Пауза',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Натиснете клавиш…',
     keybindsNote:
       'Щракнете върху комбинация и натиснете новия клавиш. Ако задържите {key}, докато го натискате, тя работи само докато ползвате екрана. Esc отказва.',

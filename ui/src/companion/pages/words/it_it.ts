@@ -95,6 +95,8 @@ export const words: CompanionWords = {
     volumeUp: 'Alza volume',
     volumeDown: 'Abbassa volume',
     playPause: 'Riproduci/Pausa',
+    previousTrack: 'Previous track',
+    nextTrack: 'Next track',
     pressKey: 'Premi un tasto…',
     keybindsNote:
       'Fai clic su una scorciatoia, poi premi il nuovo tasto. Se tieni premuto {key} mentre lo premi, funziona solo mentre usi lo schermo. Esc annulla.',

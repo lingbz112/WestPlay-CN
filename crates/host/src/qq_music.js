@@ -993,7 +993,48 @@
     return { items: [], songs: [], sorts: [], sort: null };
   };
   const lyricsAnswer = async (id) => {
-    const mid = String(id).split(":").pop();
+    let mid = String(id).split(":").pop();
+    if (String(id).startsWith("qq:radio-current:")) {
+      const raw = String(id).slice("qq:radio-current:".length);
+      const [title, artist] = raw
+        .split("|")
+        .map((part) => decodeURIComponent(part || ""));
+      if (title) {
+        try {
+          const request = await requestApi();
+          const response = await within(
+            request([
+              {
+                module: "music.search.SearchCgiService",
+                method: "DoSearchForQQMusicDesktop",
+                param: {
+                  remoteplace: "txt.yqq.song",
+                  searchid: String(Date.now()),
+                  search_type: 0,
+                  query: [title, artist].filter(Boolean).join(" "),
+                  page_num: 1,
+                  num_per_page: 10,
+                },
+              },
+            ]),
+            10000,
+            "QQ Music radio lyrics search timed out",
+          );
+          const songs = response?.[0]?.data?.body?.song?.list ?? [];
+          const wanted = norm(title);
+          mid =
+            songs.find((song) => {
+              const found = norm(song?.title ?? song?.name);
+              return (
+                found === wanted ||
+                (found && (found.includes(wanted) || wanted.includes(found)))
+              );
+            })?.mid ??
+            songs[0]?.mid ??
+            "";
+        } catch {}
+      }
+    }
     if (!mid) return { synced: false, lines: [] };
     const url =
       `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${encodeURIComponent(mid)}` +
@@ -1475,7 +1516,7 @@
             id: mid
               ? `qq:track:${mid}`
               : radio
-                ? `qq:radio-current:${info.title}`
+                ? `qq:radio-current:${encodeURIComponent(info.title)}|${encodeURIComponent(info.artist)}`
                 : `qq:current:${info.title}`,
             name: info.title,
             artist: info.artist,

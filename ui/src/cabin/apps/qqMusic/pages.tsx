@@ -125,7 +125,7 @@ export function Home({ shown }: { shown: boolean }) {
   const account = useAccount()
   const asked = useAsked(account === 'in' ? { ask: 'home' } : null, useShownAgain(shown))
   const latest = useAsked(account === 'out' ? { ask: 'new' } : null)
-  const title = 'QQ音乐首页'
+  const title = '首页'
   if (account === 'unknown') {
     return (
       <Scroll title={title}>

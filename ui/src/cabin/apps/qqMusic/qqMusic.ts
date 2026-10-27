@@ -393,8 +393,8 @@ export function playFrom(
   const shuffled = shuffle ?? was?.shuffle ?? false
   const start = index ?? (shuffled ? Math.floor(Math.random() * tracks.length) : 0)
   if (isInHost()) {
-    // A new QQ player page starts at 100%: restore the volume chosen in WestPlay on its first report.
-    restoreVolume = was?.volume ?? preferredVolume
+    // The host repeats this after every player-page load, before QQ starts the new queue.
+    qqMusic({ action: 'volume', percent: Math.round((was?.volume ?? preferredVolume) * 100) })
     // Every visible list travels with its playback request: the whole collection becomes QQ's queue.
     qqMusic({
       action: 'play',
@@ -430,7 +430,7 @@ export function playFrom(
 export function play(item: AppleMusicItem): void {
   const was = useQqMusic.getState().playback
   if (isInHost()) {
-    restoreVolume = was?.volume ?? preferredVolume
+    qqMusic({ action: 'volume', percent: Math.round((was?.volume ?? preferredVolume) * 100) })
     qqMusic({ action: 'play', id: item.id, name: item.name, kind: item.kind })
     expectPlaying()
     const track: AppleMusicTrack = {
@@ -476,7 +476,7 @@ export function play(item: AppleMusicItem): void {
 export function playSearchTrack(track: AppleMusicTrack): void {
   const was = useQqMusic.getState().playback
   if (isInHost()) {
-    restoreVolume = was?.volume ?? preferredVolume
+    qqMusic({ action: 'volume', percent: Math.round((was?.volume ?? preferredVolume) * 100) })
     qqMusic({ action: 'play', id: track.id, insert: true })
     expectPlaying()
   }
@@ -609,8 +609,6 @@ let preferredVolume = (() => {
     return PREVIEW_VOLUME
   }
 })()
-let restoreVolume: number | null = null
-
 /** The player's volume (0 to 1), as it's dragged: shown at once, sent a few times a second (and the last one
  * always). */
 export function setVolume(share: number, done = false): void {
@@ -676,15 +674,6 @@ export function receivePlayback(playback: AppleMusicPlayback | null): void {
   const direction: 1 | -1 = before?.id === playback.track.id ? (was?.direction ?? 1) : backwards ? -1 : 1
   if (before?.id !== playback.track.id) lastSkip = null
   if (playback.playing) stopExpecting()
-  let volume = playback.volume
-  if (restoreVolume !== null) {
-    const wanted = restoreVolume
-    restoreVolume = null
-    if (isInHost() && volume !== null && Math.abs(volume - wanted) > 0.005) {
-      qqMusic({ action: 'volume', percent: Math.round(wanted * 100) })
-    }
-    volume = wanted
-  }
   const { favorites } = useQqMusic.getState()
   const favorite = playback.track.favorite
   useQqMusic.setState({
@@ -700,7 +689,7 @@ export function receivePlayback(playback: AppleMusicPlayback | null): void {
       preview: playback.preview,
       shuffle: playback.shuffle,
       repeat: playback.repeat,
-      volume,
+      volume: playback.volume,
       direction,
     },
     // What Apple Music says of the song's favourite is the latest (not said: what was known stays).

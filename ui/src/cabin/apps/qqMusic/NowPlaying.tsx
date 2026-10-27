@@ -449,7 +449,7 @@ function Words({ playback, track }: { playback: Playback; track: AppleMusicTrack
   if (lyrics.lines.length === 0) {
     return (
       <div className="am-lyrics-box">
-        <p className="am-lyrics-none">{text.appleMusic.noLyrics}</p>
+        <p className="am-lyrics-none">当前歌曲暂无歌词</p>
       </div>
     )
   }

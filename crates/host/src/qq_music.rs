@@ -126,6 +126,8 @@ pub struct QqMusic {
     pending_prepare: RefCell<Option<String>>,
     /// A song was queued: the player page is to play when it's ready.
     pending_play: Cell<bool>,
+    /// The volume chosen in the cabin, sent again whenever QQ replaces its player page.
+    volume: Cell<Option<f64>>,
     told: RefCell<Told>,
 }
 
@@ -166,6 +168,7 @@ impl QqMusic {
             unanswered: RefCell::default(),
             pending_prepare: RefCell::new(None),
             pending_play: Cell::new(false),
+            volume: Cell::new(None),
             told: RefCell::default(),
         })
     }
@@ -259,7 +262,14 @@ impl QqMusic {
                 self.pending_play.set(true);
                 self.browse.post_json(&prepare)
             }
-            Command::Seek { .. } | Command::Volume { .. } => {
+            Command::Volume { percent } => {
+                if percent.is_finite() {
+                    self.volume.set(Some(percent.clamp(0.0, 100.0)));
+                }
+                log!("[qq music] command {}", serde_json::to_string(command).unwrap_or_default());
+                self.player.post_json(&serde_json::to_string(command).unwrap_or_default())
+            }
+            Command::Seek { .. } => {
                 log!("[qq music] command {}", serde_json::to_string(command).unwrap_or_default());
                 self.player.post_json(&serde_json::to_string(command).unwrap_or_default())
             }
@@ -318,6 +328,10 @@ impl QqMusic {
                 Some(Message::Ready(Role::Player)) => {
                     for told in self.told.borrow().messages.iter().flatten() {
                         let _ = self.player.post_json(told);
+                    }
+                    if let Some(percent) = self.volume.get() {
+                        let volume = serde_json::json!({ "action": "volume", "percent": percent });
+                        let _ = self.player.post_json(&volume.to_string());
                     }
                     if self.pending_play.replace(false) {
                         let _ = self.player.post_json(r#"{"action":"play"}"#);

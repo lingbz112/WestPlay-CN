@@ -62,6 +62,26 @@
     },
   });
 
+  // QMA (QQ's audio engine) renders into Web Audio and joins its master gain to the destination. Remember
+  // that node before the page's player starts, so cab_sound.js can put the truck's speakers after it.
+  const qmaOutput = { node: null, context: null };
+  window.__westplayQmaOutput = qmaOutput;
+  try {
+    const connect = AudioNode.prototype.connect;
+    AudioNode.prototype.connect = function (destination, ...rest) {
+      if (
+        destination === this.context?.destination &&
+        this instanceof GainNode &&
+        (!qmaOutput.node || qmaOutput.context !== this.context)
+      ) {
+        qmaOutput.node = this;
+        qmaOutput.context = this.context;
+        post({ log: "QMA audio output found" });
+      }
+      return connect.call(this, destination, ...rest);
+    };
+  } catch {}
+
   const waitFor = async (read, timeout = 12000) => {
     const until = Date.now() + timeout;
     while (Date.now() < until) {
@@ -1764,10 +1784,15 @@
   };
   let sound = null;
   const attach = () => {
-    const audio = findAudio();
-    if (!audio || sound || typeof window.westplayCabSound !== "function")
+    const qma = () => window.__westplayQmaOutput?.node ?? null;
+    const source = qma() ?? findAudio();
+    if (!source || sound || typeof window.westplayCabSound !== "function")
       return;
-    sound = window.westplayCabSound(audio, (message) => post(message));
+    sound = window.westplayCabSound(
+      () => qma() ?? findAudio(),
+      (message) => post(message),
+      { playing },
+    );
     if (cab.speakers !== null) sound.speakers(cab.speakers);
     if (cab.head !== null) sound.head(cab.head);
     if (cab.outside !== null)

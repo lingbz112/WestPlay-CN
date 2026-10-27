@@ -16,7 +16,7 @@ use westplay_shared::{KEYBIND_COUNT, Keybind, keybind_value};
 
 /// Version of the settings file format. Bump it, and teach [`migrate`] the step, when a setting's meaning
 /// or shape changes (adding a setting needs neither: it takes its default).
-pub const SETTINGS_VERSION: u32 = 2;
+pub const SETTINGS_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -226,15 +226,15 @@ impl<'de> Deserialize<'de> for Keybinds {
 }
 
 impl Default for Keybinds {
-    /// Volume down, play/pause and volume up are the interaction key with 1, 2 and 3 (as promised to the
-    /// players who asked: Alt+1, Alt+2, Alt+3). Track keys use the keyboard's own media keys, alone, so they
-    /// work anywhere in the game and do not claim a driving key.
+    /// Volume down and up are the interaction key with 1 and 3 (Alt+1 and Alt+3). Play/pause and the track keys
+    /// use the keyboard's own media keys, alone, so they work anywhere in the game and do not claim a driving
+    /// key.
     fn default() -> Self {
         let with_key = |code| Binding { key: KeyCode(code), with_interaction_key: true };
         Self {
             volume_down: with_key(0x31),
-            play_pause: with_key(0x32),
             volume_up: with_key(0x33),
+            play_pause: Binding { key: KeyCode(0xb3), with_interaction_key: false },
             previous_track: Binding { key: KeyCode(0xb1), with_interaction_key: false },
             next_track: Binding { key: KeyCode(0xb0), with_interaction_key: false },
         }
@@ -346,6 +346,14 @@ fn migrate(mut file: serde_json::Value, version: u32) -> serde_json::Value {
         && let Some(named) = key.as_str().and_then(KeyCode::named)
     {
         *key = serde_json::Value::from(named.virtual_key());
+    }
+    // 3: play/pause leaves the screen's interaction key and uses the keyboard's media key, alone.
+    if version < 3
+        && file.pointer("/keybinds/playPause")
+            == Some(&serde_json::json!({ "key": 0x32, "withInteractionKey": true }))
+        && let Some(play_pause) = file.pointer_mut("/keybinds/playPause")
+    {
+        *play_pause = serde_json::json!({ "key": 0xb3, "withInteractionKey": false });
     }
     file
 }
@@ -466,7 +474,7 @@ mod tests {
             },
         };
         let json = to_json(&settings);
-        assert!(json.contains("\"version\": 2"), "{json}");
+        assert!(json.contains("\"version\": 3"), "{json}");
         assert!(json.contains("\"key\": 5"), "{json}");
         assert!(json.contains("\"mode\": \"toggle\""), "{json}");
         assert!(json.contains("\"truckStrip\": \"off\""), "{json}");
@@ -484,8 +492,12 @@ mod tests {
         assert_eq!(partial.keybinds, Keybinds::default());
         let with_key = |code| Binding { key: KeyCode::new(code).unwrap(), with_interaction_key: true };
         assert_eq!(
-            [partial.keybinds.volume_down, partial.keybinds.play_pause, partial.keybinds.volume_up],
-            [with_key(0x31), with_key(0x32), with_key(0x33)]
+            [partial.keybinds.volume_down, partial.keybinds.volume_up],
+            [with_key(0x31), with_key(0x33)]
+        );
+        assert_eq!(
+            partial.keybinds.play_pause,
+            Binding { key: KeyCode::new(0xb3).unwrap(), with_interaction_key: false }
         );
         assert_eq!(
             [partial.keybinds.previous_track, partial.keybinds.next_track],
@@ -530,6 +542,36 @@ mod tests {
         );
         // Not an object at all: every default.
         assert_eq!(parse(r#"{"version": 2, "keybinds": 4}"#).unwrap().keybinds, defaults);
+    }
+
+    #[test]
+    fn play_pause_moves_to_the_media_key_without_losing_a_custom_binding() {
+        let untouched = parse(
+            r#"{"version": 2, "keybinds": {
+                "playPause": {"key": 50, "withInteractionKey": true},
+                "previousTrack": {"key": 103, "withInteractionKey": false}
+            }}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            untouched.keybinds.play_pause,
+            Binding { key: KeyCode::new(0xb3).unwrap(), with_interaction_key: false }
+        );
+        assert_eq!(
+            untouched.keybinds.previous_track,
+            Binding { key: KeyCode::new(0x67).unwrap(), with_interaction_key: false }
+        );
+
+        let custom = parse(
+            r#"{"version": 2, "keybinds": {
+                "playPause": {"key": 104, "withInteractionKey": false}
+            }}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            custom.keybinds.play_pause,
+            Binding { key: KeyCode::new(0x68).unwrap(), with_interaction_key: false }
+        );
     }
 
     #[test]

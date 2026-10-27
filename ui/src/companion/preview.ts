@@ -58,7 +58,7 @@ let settings: Settings = {
   interaction: { key: 0xa4, mode: 'hold', sensitivity: 1.4 },
   keybinds: {
     volumeDown: { key: 0x31, withInteractionKey: true },
-    playPause: { key: 0x32, withInteractionKey: true },
+    playPause: { key: 0xb3, withInteractionKey: false },
     volumeUp: { key: 0x33, withInteractionKey: true },
     previousTrack: { key: 0xb1, withInteractionKey: false },
     nextTrack: { key: 0xb0, withInteractionKey: false },

@@ -330,6 +330,7 @@ impl QqMusic {
                         let _ = self.player.post_json(told);
                     }
                     if let Some(percent) = self.volume.get() {
+                        log!("[qq music] restoring volume {percent:.0}% before playback");
                         let volume = serde_json::json!({ "action": "volume", "percent": percent });
                         let _ = self.player.post_json(&volume.to_string());
                     }

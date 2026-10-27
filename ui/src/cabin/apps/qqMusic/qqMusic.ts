@@ -803,7 +803,10 @@ export function useNow(running: boolean): number {
  * in. */
 export function useWebPlayer(): void {
   useEffect(() => {
-    if (isInHost()) qqMusic({ action: 'start' })
+    if (isInHost()) {
+      qqMusic({ action: 'volume', percent: Math.round(preferredVolume * 100) })
+      qqMusic({ action: 'start' })
+    }
   }, [])
 }
 

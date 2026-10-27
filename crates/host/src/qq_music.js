@@ -319,6 +319,16 @@
   const emptyPage = () => page([]);
 
   const homePage = async () => {
+    for (
+      let i = 0;
+      i < 40 &&
+      !one(
+        '.playlist__item, .debutlist__item, .songlist__item, .mod_index, [class*="index__"]',
+      );
+      i++
+    ) {
+      await sleep(250);
+    }
     const playlists = items("playlist").slice(0, 12);
     const songs = await enrichTracks(tracks().slice(0, 20));
     const albums = await enrichItems(items("album").slice(0, 8));
@@ -1581,6 +1591,13 @@
     };
   };
   let lastPlayback = "";
+  let heldVolume = null;
+  let holdVolumeUntil = 0;
+  const holdVolume = (share) => {
+    heldVolume = Math.max(0, Math.min(1, Number(share) || 0));
+    holdVolumeUntil = Date.now() + 3500;
+    setVolume(heldVolume);
+  };
   const sayPlayback = () => {
     const playback = currentPlayback();
     const text = JSON.stringify(playback);
@@ -1697,7 +1714,7 @@
       seek(Number(command.seconds) || 0);
     },
     volume(command) {
-      setVolume((Number(command.percent) || 0) / 100);
+      holdVolume((Number(command.percent) || 0) / 100);
     },
     shuffle() {
       click('[class*="shuffle"], [title*="随机"], [class*="random"]');
@@ -1816,5 +1833,10 @@
   if (role === "player") {
     setInterval(sayPlayback, 500);
     setInterval(attach, 1000);
+    setInterval(() => {
+      if (heldVolume !== null && Date.now() < holdVolumeUntil) {
+        setVolume(heldVolume);
+      }
+    }, 250);
   }
 })();

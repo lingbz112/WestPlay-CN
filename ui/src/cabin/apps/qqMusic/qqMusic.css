@@ -1378,14 +1378,24 @@
   background: var(--am-fill);
 }
 
-/* The time, a thin line along the capsule's foot. */
+/* The time: a thin line along the capsule's foot, with a taller invisible strip to grab it. */
 .shell .am-mini-time {
   position: absolute;
   inset: auto 46px 0;
+  height: 14px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+  z-index: 2;
+}
+
+.shell .am-mini-time::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
   height: 3px;
   border-radius: 2px;
-  background-color: var(--mini-dim);
-  clip-path: inset(0 calc((1 - var(--share)) * 100%) 0 0);
+  background: linear-gradient(to right, var(--am-key) calc(var(--share) * 100%), var(--mini-dim) 0);
   transition: background-color 600ms ease;
 }
 
@@ -1653,14 +1663,13 @@
 
 /* Waiting for the song's sound (loading, buffering): the bar breathes, its time held. */
 .shell .am-slider.am-time.loading,
-.shell .am-mini-time.loading {
+.shell .am-mini-time.loading::before {
   animation: am-breathe 1.6s ease-in-out infinite alternate;
 }
 
 /* The mini player's line has no track of its own: waiting, the whole line breathes, faint. */
-.shell .am-mini-time.loading {
-  clip-path: none;
-  background-color: color-mix(in srgb, var(--mini-dim) 60%, transparent);
+.shell .am-mini-time.loading::before {
+  background: color-mix(in srgb, var(--mini-dim) 60%, transparent);
 }
 
 @keyframes am-breathe {

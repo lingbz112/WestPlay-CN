@@ -54,11 +54,19 @@ export function MiniPlayer({ aside }: { aside: boolean }) {
   const now = useNow(playback?.playing ?? false)
   const track = currentTrack(playback)
   const bar = useRef<HTMLDivElement>(null)
+  const line = useRef<HTMLSpanElement>(null)
+  const [dragged, setDragged] = useState<number | null>(null)
   const away = open || aside
   // Over something light, its words go dark (Apple's glass): smoothly (appleMusic.css).
   const light = useBackdropLight(bar, Boolean(track) && !away)
   if (!playback || !track) return null
   const share = playback.duration > 0 ? positionOf(playback, now) / playback.duration : 0
+  const shown = dragged ?? share
+  const shareAtLine = (event: PointerEvent<HTMLSpanElement>) => {
+    const box = line.current?.getBoundingClientRect()
+    if (!box || !track.duration) return null
+    return Math.max(0, Math.min(1, (event.clientX - box.left) / box.width))
+  }
   return (
     <div
       ref={bar}
@@ -99,8 +107,31 @@ export function MiniPlayer({ aside }: { aside: boolean }) {
         <NextGlyph size={38} />
       </button>
       <span
+        ref={line}
         className={playback.loading ? 'am-mini-time loading' : 'am-mini-time'}
-        style={{ '--share': share } as CSSProperties}
+        style={{ '--share': shown } as CSSProperties}
+        role="slider"
+        tabIndex={0}
+        aria-label={text.appleMusic.nowPlaying}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(shown * 100)}
+        onPointerDown={(event) => {
+          event.stopPropagation()
+          event.currentTarget.setPointerCapture(event.pointerId)
+          setDragged(shareAtLine(event) ?? 0)
+        }}
+        onPointerMove={(event) => {
+          if (dragged !== null) setDragged(shareAtLine(event) ?? dragged)
+        }}
+        onPointerUp={(event) => {
+          event.stopPropagation()
+          const value = shareAtLine(event)
+          if (value !== null) seek(value * track.duration)
+          setDragged(null)
+        }}
+        onPointerCancel={() => setDragged(null)}
+        onClick={(event) => event.stopPropagation()}
       />
     </div>
   )

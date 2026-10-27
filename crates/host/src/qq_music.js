@@ -429,9 +429,20 @@
     if (!signedIn()) return { items: [], songs: [], sorts: [], sort: null }
     // The Library is drawn by QQ Music's own client script; its fetched HTML is only a shell. Open it in
     // this hidden browser and read the live page. The host re-asks after the navigation.
-    if (!location.pathname.includes('/profile')) {
-      post({ log: `library opening from ${location.pathname}` })
-      location.href = `${ORIGIN}/n/ryqq_v2/profile`
+    // `/profile` alone opens 我喜欢 (liked songs); playlists live on their own tab. Go there for the
+    // playlists/recent views, and to the liked-albums/artists pages for those shelves.
+    const path =
+      shelf === 'songs'
+        ? '/profile/like/song'
+        : shelf === 'albums'
+          ? '/profile/like/album'
+          : shelf === 'artists'
+            ? '/profile/like/singer'
+            : '/profile/playlist/created'
+    const prefix = shelf === 'songs' || shelf === 'albums' || shelf === 'artists' ? path : '/profile/playlist'
+    if (!location.pathname.includes(prefix)) {
+      post({ log: `library opening ${path} from ${location.pathname}` })
+      location.href = `${ORIGIN}/n/ryqq_v2${path}`
       return null
     }
     for (let i = 0; i < 24; i++) {
@@ -671,6 +682,13 @@
     if (!track) return null
     const index = current ? rows.indexOf(current) : 0
     const mode = norm(one('.btn_big_only, [class*="loop"], [class*="mode"]')?.textContent)
+    const volumeBar = one('.player_voice .player_progress__inner')
+    const volumeBox = volumeBar?.getBoundingClientRect()
+    const volumeFill = volumeBar ? one('.player_progress__play', volumeBar) : null
+    const volume =
+      volumeBox && volumeBox.width > 0 && volumeFill
+        ? Math.max(0, Math.min(1, volumeFill.getBoundingClientRect().width / volumeBox.width))
+        : (audio?.volume ?? null)
     return {
       track: { ...track, image: cover ?? track.image, duration: audio?.duration || time.duration || track.duration },
       context: { id: 'qq:player', name: 'QQ Music', kind: 'playlist' },
@@ -681,7 +699,7 @@
       preview: false,
       shuffle: /随机|shuffle/i.test(mode),
       repeat: /单曲|one/i.test(mode) ? 'one' : /循环|list/i.test(mode) ? 'all' : 'off',
-      volume: audio ? audio.volume : null,
+      volume,
       next: rows.slice(index + 1, index + 9),
     }
   }

@@ -26,7 +26,7 @@ export function Cover({ item, className = '' }: { item: Covered; className?: str
   if (item.image) {
     return (
       <span className={classes} style={{ '--cover': item.color } as CSSProperties}>
-        <img src={item.image} alt="" draggable={false} />
+        <img src={item.image} alt="" draggable={false} referrerPolicy="no-referrer" decoding="async" />
       </span>
     )
   }

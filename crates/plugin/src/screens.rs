@@ -56,6 +56,8 @@ struct ScreenTexture {
     /// Version of the app frame last copied into it, [`TRANSPARENT`], or 0 for the mod's initial content.
     version: u64,
     last_used: u64,
+    /// First frame of the current gap without an app frame (0: the app's latest frame is available).
+    missing_since: u64,
 }
 
 #[derive(Default)]
@@ -329,7 +331,7 @@ unsafe fn refresh(context: &ID3D11DeviceContext, texture: ID3D11Texture2D, heigh
             None => {
                 let id = screen_layouts()[layout].id;
                 log!("screen texture loaded: {id} ({} in use)", state.screens.len() + 1);
-                state.screens.push(ScreenTexture { texture, height, version: 0, last_used: frame });
+                state.screens.push(ScreenTexture { texture, height, version: 0, last_used: frame, missing_since: 0 });
                 state.screens.len() - 1
             }
         };
@@ -373,13 +375,21 @@ unsafe fn refresh(context: &ID3D11DeviceContext, texture: ID3D11Texture2D, heigh
         let latest = if enabled { state.frames.update(&device, context) } else { None };
         match latest {
             Some((latest, version)) => {
+                screen.missing_since = 0;
                 if screen.version != version {
                     copy_frame(context, &screen.texture, screen.height, &latest);
                     screen.version = version;
                 }
             }
             None => {
-                if screen.version != TRANSPARENT {
+                // NVIDIA's recorder (and similar overlays) can make the shared frame unavailable for a few game
+                // frames while it is starting. Keep the last picture through that gap; a genuinely stopped or
+                // disabled host still blanks after a second.
+                if screen.missing_since == 0 {
+                    screen.missing_since = frame.max(1);
+                }
+                let keep_last = enabled && frame.saturating_sub(screen.missing_since) < 30;
+                if !keep_last && screen.version != TRANSPARENT {
                     if state.transparent.is_none() {
                         state.transparent = create_transparent(&device);
                     }

@@ -15,6 +15,49 @@
     post({ render: true });
     location.href = url;
   };
+  // QQ's media hosts send `Access-Control-Allow-Origin: *`. Set CORS before the site assigns a media
+  // source so a radio <audio> can join Web Audio instead of being silenced by MediaElementSource.
+  try {
+    const src = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+    if (src?.get && src?.set) {
+      Object.defineProperty(HTMLMediaElement.prototype, "src", {
+        configurable: true,
+        enumerable: src.enumerable,
+        get() {
+          return src.get.call(this);
+        },
+        set(value) {
+          if (/^https?:/i.test(String(value))) this.crossOrigin = "anonymous";
+          src.set.call(this, value);
+        },
+      });
+    }
+    const setAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+      if (
+        this instanceof HTMLMediaElement &&
+        String(name).toLowerCase() === "src" &&
+        /^https?:/i.test(String(value))
+      )
+        this.crossOrigin = "anonymous";
+      return setAttribute.call(this, name, value);
+    };
+    const append = Node.prototype.appendChild;
+    Node.prototype.appendChild = function (child) {
+      if (this instanceof HTMLMediaElement && child instanceof HTMLSourceElement)
+        this.crossOrigin = "anonymous";
+      return append.call(this, child);
+    };
+    const AudioElement = window.Audio;
+    window.Audio = function (...args) {
+      const audio = new AudioElement(...args);
+      audio.crossOrigin = "anonymous";
+      return audio;
+    };
+    window.Audio.prototype = AudioElement.prototype;
+  } catch (error) {
+    post({ log: `radio CORS media hook failed: ${error}` });
+  }
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const norm = (value) =>
     String(value ?? "")
@@ -1815,7 +1858,12 @@
     // Radio's media element is cross-origin and has no QMA node. Routing it through
     // `createMediaElementSource` makes Chromium output silence when CORS does not permit the media
     // stream. Leave this route native so it remains audible.
-    if (location.pathname.includes("player_radio") && !qma()) {
+    const radioAudio = findAudio();
+    if (
+      location.pathname.includes("player_radio") &&
+      !qma() &&
+      radioAudio?.crossOrigin !== "anonymous"
+    ) {
       if (!saidNativeRadio) {
         saidNativeRadio = true;
         post({ log: "radio media is playing natively (cross-origin Web Audio is muted)" });
@@ -1919,6 +1967,7 @@
           context: qmaOutput.context?.state ?? null,
           audio: audio?.tagName ?? null,
           media: document.querySelectorAll("audio, video").length,
+          crossOrigin: audio?.crossOrigin ?? null,
           path: location.pathname,
         })}`,
       });

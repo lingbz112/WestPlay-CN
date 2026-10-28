@@ -1122,6 +1122,21 @@ impl Default for Reverb {
     }
 }
 
+/// How much of the cabin model every player uses (Settings › Sound › Cabin Character).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CabinCharacter {
+    /// The direct speaker field only.
+    Reference,
+    /// A conservative car-cabin transfer curve and gentle bus compression.
+    Equalized,
+    /// A short measured-style early-reflection response, without the long reverb.
+    Impulse,
+    /// The cabin curve, early reflections and the adjustable diffuse reverb together.
+    #[default]
+    Full,
+}
+
 /// The music's spectrum as a player's page measures it (cab_sound.js: after the tone, before the speakers), for
 /// the cab's Equalizer to draw behind its curve while it's open: each bar's loudness (0 to 255), low to high.
 /// Read from the page's `{"spectrum":[…]}`: whole numbers 0 to 255 only, and no more than [`SPECTRUM_MOST`].

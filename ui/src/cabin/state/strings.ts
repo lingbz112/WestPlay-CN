@@ -457,6 +457,12 @@ export interface Strings {
     mid: string
     high: string
     resetEqualizer: string
+    cabinCharacter: string
+    characterFooter: string
+    characterReference: string
+    characterEq: string
+    characterIr: string
+    characterFull: string
     cabinReverb: string
     reverbFooter: string
     reverbEnabled: string
@@ -944,6 +950,13 @@ export const STRINGS: Record<Language, Strings> = {
       mid: 'Mid',
       high: 'High',
       resetEqualizer: 'Reset',
+      cabinCharacter: 'Cabin Character',
+      characterFooter:
+        'Reference is the untouched speaker field. Cabin EQ adds car-interior tonal balance. Cabin IR adds short early reflections. Full Cabin combines the EQ, reflections and adjustable reverb. Use these to find which part of the cabin sound is missing.',
+      characterReference: 'Reference',
+      characterEq: 'Cabin EQ',
+      characterIr: 'Cabin IR',
+      characterFull: 'Full Cabin',
       cabinReverb: 'Cabin Reverb',
       reverbFooter:
         'Adds the reflections of the truck interior after the speakers. Larger, longer cabs need a longer tail; the reverb keeps bass out so heavy low end does not become muddy.',
@@ -1443,6 +1456,13 @@ export const STRINGS: Record<Language, Strings> = {
       mid: 'Orta',
       high: 'Yüksek',
       resetEqualizer: 'Sıfırla',
+      cabinCharacter: 'Kabin Karakteri',
+      characterFooter:
+        'Referans yalnızca hoparlör alanıdır. Kabin EQ otomobil içi ton dengesini ekler. Kabin IR kısa erken yansımaları ekler. Tam Kabin üçünü birleştirir. Eksik olan ses katmanını seçmek için bu dört ayarı kullan.',
+      characterReference: 'Referans',
+      characterEq: 'Kabin EQ',
+      characterIr: 'Kabin IR',
+      characterFull: 'Tam Kabin',
       cabinReverb: 'Kabin Yankısı',
       reverbFooter:
         'Hoparlörlerden sonra kamyon kabininin yansımalarını ekler. Daha büyük ve uzun kabinler daha uzun bir kuyruk ister; yankı bası dışarıda tutarak güçlü alt frekansların çamurlu olmasını önler.',

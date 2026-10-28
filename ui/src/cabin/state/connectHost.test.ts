@@ -125,6 +125,20 @@ describe('connectHost', () => {
     disconnect()
   })
 
+  it('switches the four cabin character A/B modes', async () => {
+    const webview = fakeWebView()
+    vi.stubGlobal('window', { chrome: { webview: webview.bridge } })
+    const { connectHost, useCabin } = await import('./store')
+    const disconnect = connectHost(() => 0)
+    expect(useCabin.getState().cabinCharacter).toBe('full')
+    webview.send({ type: 'settings', truckStrip: 'auto', character: 'impulse' })
+    expect(useCabin.getState().cabinCharacter).toBe('impulse')
+    useCabin.getState().setCabinCharacter('equalized')
+    expect(useCabin.getState().cabinCharacter).toBe('equalized')
+    expect(webview.posted.at(-1)).toEqual({ type: 'character', character: 'equalized' })
+    disconnect()
+  })
+
   it('powers off and forgets the telemetry as the game closes, and powers on again with the next game', async () => {
     const webview = fakeWebView()
     vi.stubGlobal('window', { chrome: { webview: webview.bridge } })

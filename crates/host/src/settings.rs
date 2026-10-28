@@ -50,6 +50,9 @@ pub struct SoundSettings {
     /// The cab's shared reflections (Settings › Sound › Cabin Reverb).
     #[serde(deserialize_with = "lenient")]
     pub reverb: crate::speakers::Reverb,
+    /// The amount of cabin modelling used (Settings › Sound › Cabin Character).
+    #[serde(deserialize_with = "lenient")]
+    pub character: crate::speakers::CabinCharacter,
 }
 
 impl SoundSettings {
@@ -475,6 +478,7 @@ mod tests {
                 equalizer: crate::speakers::Equalizer { bass: -3, mid: 1, treble: 2 },
                 custom: true,
                 reverb: crate::speakers::Reverb { enabled: true, size: 72, amount: 38 },
+                character: crate::speakers::CabinCharacter::Full,
             },
         };
         let json = to_json(&settings);

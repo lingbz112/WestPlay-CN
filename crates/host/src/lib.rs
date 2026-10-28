@@ -305,6 +305,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let mut equalizer = config.settings.get().sound.playing();
     // The cab's shared reflections (Settings › Sound › Cabin Reverb), passed on with the cab too.
     let mut reverb = config.settings.get().sound.reverb.clamped();
+    let mut character = config.settings.get().sound.character;
     // The music's spectrum wanted by the cab (its Equalizer open): asked of the players with the cab.
     let mut spectrum = false;
     // The page's height (`westplay_shared::page_height`): the frame's until a screen asks for another.
@@ -821,6 +822,15 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                     if settings.sound.reverb != sound {
                         reverb = sound;
                         settings.sound.reverb = sound;
+                        config.settings.set(settings.clone());
+                        (config.on_settings)(&settings);
+                    }
+                }
+                Some(PageMessage::Character { character: chosen }) => {
+                    let mut settings = config.settings.get();
+                    if settings.sound.character != chosen {
+                        character = chosen;
+                        settings.sound.character = chosen;
                         config.settings.set(settings.clone());
                         (config.on_settings)(&settings);
                     }
@@ -1507,19 +1517,19 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 _ => speakers::in_truck(truck.id.as_str()),
             };
             if let Some(player) = &youtube {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, spectrum);
+                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
             }
             if let Some(player) = &apple_music {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, spectrum);
+                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
             }
             if let Some(player) = &qq_music {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, spectrum);
+                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
             }
             if let Some(player) = &youtube_music {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, spectrum);
+                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
             }
             if let Some(player) = &spotify {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, spectrum);
+                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
             }
         }
 
@@ -2004,6 +2014,7 @@ fn settings_message(settings: &settings::Settings) -> String {
         "equalizer": settings.sound.equalizer.clamped(),
         "equalizerCustom": settings.sound.custom,
         "reverb": settings.sound.reverb.clamped(),
+        "character": settings.sound.character,
     })
     .to_string()
 }
@@ -2043,6 +2054,10 @@ enum PageMessage {
         enabled: bool,
         size: i8,
         amount: i8,
+    },
+    /// The amount of cabin modelling every player uses.
+    Character {
+        character: speakers::CabinCharacter,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the players measure it, and it's passed
     /// on to the page as they say it.
@@ -2261,6 +2276,10 @@ mod tests {
             parse_page_message(r#"{"type":"reverb","enabled":true,"size":70,"amount":35}"#),
             Some(PageMessage::Reverb { enabled: true, size: 70, amount: 35 })
         );
+        assert_eq!(
+            parse_page_message(r#"{"type":"character","character":"impulse"}"#),
+            Some(PageMessage::Character { character: crate::speakers::CabinCharacter::Impulse })
+        );
         assert_eq!(parse_page_message(r#"{"type":"spectrum","on":true}"#), Some(PageMessage::Spectrum { on: true }));
         assert_eq!(
             parse_page_message(r#"{"type":"cursorLight","light":true}"#),
@@ -2420,6 +2439,7 @@ mod tests {
                 "equalizer": { "bass": 0, "mid": 0, "treble": 0 },
                 "equalizerCustom": false,
                 "reverb": { "enabled": true, "size": 55, "amount": 32 },
+                "character": "full",
             })
         );
         settings.screen.truck_strip = crate::settings::TruckStrip::Off;

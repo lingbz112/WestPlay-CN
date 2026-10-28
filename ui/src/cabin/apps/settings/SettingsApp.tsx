@@ -20,7 +20,16 @@ import {
 } from './glyphs'
 import { type SettingsPage, useSettings } from './settings'
 import './settings.css'
-import { cabClock, EQUALIZER_BANDS, EQUALIZER_MOST, type Equalizer, isInHost, postToHost } from '../../../shared/host'
+import {
+  cabClock,
+  CABIN_CHARACTERS,
+  type CabinCharacter,
+  EQUALIZER_BANDS,
+  EQUALIZER_MOST,
+  type Equalizer,
+  isInHost,
+  postToHost,
+} from '../../../shared/host'
 
 /**
  * The Settings app, in iOS 26's Settings look: a large title, inset grouped cards, coloured tiles, chevrons
@@ -62,6 +71,8 @@ function PageContent({ page }: { page: SettingsPage }) {
       return <EqualizerPage />
     case 'reverb':
       return <ReverbPage />
+    case 'character':
+      return <CharacterPage />
     case 'textSize':
       return <TextSizePage />
   }
@@ -351,6 +362,13 @@ function SoundPage() {
   const open = useSettings((state) => state.open)
   const custom = useCabin((state) => state.equalizerCustom)
   const reverb = useCabin((state) => state.reverb)
+  const character = useCabin((state) => state.cabinCharacter)
+  const characterNames: Record<CabinCharacter, string> = {
+    reference: text.settings.characterReference,
+    equalized: text.settings.characterEq,
+    impulse: text.settings.characterIr,
+    full: text.settings.characterFull,
+  }
   return (
     <Page title={text.settings.sound}>
       <Group footer={text.settings.soundFooter}>
@@ -360,10 +378,42 @@ function SoundPage() {
           onOpen={() => open('equalizer')}
         />
         <NavRow
+          label={text.settings.cabinCharacter}
+          value={characterNames[character]}
+          onOpen={() => open('character')}
+        />
+        <NavRow
           label={text.settings.cabinReverb}
           value={reverb.enabled ? `${reverb.amount}%` : text.settings.off}
           onOpen={() => open('reverb')}
         />
+      </Group>
+    </Page>
+  )
+}
+
+/** The four-step cabin A/B: direct speakers, cabin EQ, early reflections, then the full model. */
+function CharacterPage() {
+  const text = useText()
+  const chosen = useCabin((state) => state.cabinCharacter)
+  const choose = useCabin((state) => state.setCabinCharacter)
+  const names: Record<CabinCharacter, string> = {
+    reference: text.settings.characterReference,
+    equalized: text.settings.characterEq,
+    impulse: text.settings.characterIr,
+    full: text.settings.characterFull,
+  }
+  return (
+    <Page title={text.settings.cabinCharacter}>
+      <Group footer={text.settings.characterFooter}>
+        {CABIN_CHARACTERS.map((character) => (
+          <CheckRow
+            key={character}
+            label={names[character]}
+            on={chosen === character}
+            onPick={() => choose(character)}
+          />
+        ))}
       </Group>
     </Page>
   )

@@ -110,6 +110,8 @@ export type HostMessage =
       equalizerCustom?: boolean
       /** The cab's shared reverb (Settings › Sound › Cabin Reverb). */
       reverb?: Reverb
+      /** How much cabin modelling every player uses (Settings › Sound › Cabin Character). */
+      character?: CabinCharacter
     }
   /** The player's own wallpapers and icon sets (shared/customize.ts), their files at `CABIN_FILES`. */
   | { type: 'customize'; wallpapers: CustomWallpaper[]; iconSets: IconSet[] }
@@ -302,6 +304,16 @@ export function toReverb(value: unknown): Reverb {
   }
 }
 
+/** The four A/B levels of the cabin model. */
+export type CabinCharacter = 'reference' | 'equalized' | 'impulse' | 'full'
+
+export const CABIN_CHARACTERS: readonly CabinCharacter[] = ['reference', 'equalized', 'impulse', 'full']
+export const DEFAULT_CABIN_CHARACTER: CabinCharacter = 'full'
+
+export function toCabinCharacter(value: unknown): CabinCharacter {
+  return CABIN_CHARACTERS.includes(value as CabinCharacter) ? (value as CabinCharacter) : DEFAULT_CABIN_CHARACTER
+}
+
 export type PageMessage =
   | { type: 'ready' }
   /** A startup stage reached (the boot screens shown), for the host's startup log. */
@@ -318,6 +330,8 @@ export type PageMessage =
   | ({ type: 'equalizer'; custom: boolean } & Equalizer)
   /** The cab's shared reverb, kept with WestPlay's settings and played by every player. */
   | ({ type: 'reverb' } & Reverb)
+  /** The amount of cabin modelling chosen in Settings › Sound. */
+  | { type: 'character'; character: CabinCharacter }
   /** The music's spectrum wanted (Settings › Equalizer open) or not: the host answers `spectrum` as it plays. */
   | { type: 'spectrum'; on: boolean }
   /** Whether what's under the cursor is light: the host draws it dark there. */

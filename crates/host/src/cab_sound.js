@@ -91,12 +91,18 @@ window.westplayCabSound = (media, say, state = {}) => {
   // The cab's shared reverb: a short early-reflection cluster and a damped diffuse tail, generated for the
   // chosen room size. It is a send after the speaker mix, so the direct sound keeps its exact speaker position
   // while the reflections fill the same interior. A 180 Hz high-pass keeps heavy bass out of the tail.
+  let character = "full";
   let reverb = { enabled: true, size: 55, amount: 32 };
   let reverbTimer = null;
   const level = (value, most = 100) =>
     Math.max(0, Math.min(most, Number(value) || 0));
-  const reverbOn = () => reverb.enabled && reverb.amount > 0;
+  const cabinToneOn = () =>
+    character === "equalized" || character === "full";
+  const reflectionsOn = () => character === "impulse" || character === "full";
+  const reverbOn = () =>
+    character === "full" && reverb.enabled && reverb.amount > 0;
   const reverbGain = () => (reverb.amount / 100) ** 1.35 * 0.75;
+  const reflectionGain = () => (character === "full" ? 0.18 : 0.32);
   const cabinImpulse = (context) => {
     const size = level(reverb.size) / 100;
     const seconds = 0.42 + size * 1.18;
@@ -140,6 +146,46 @@ window.westplayCabSound = (media, say, state = {}) => {
         if (at < data.length)
           data[at] += gain * (channel ? 1 : -1) ** index;
       });
+    }
+    return impulse;
+  };
+  const cabinEarlyImpulse = (context) => {
+    const size = level(reverb.size) / 100;
+    const seconds = 0.12 + size * 0.09;
+    const rate = context.sampleRate;
+    const impulse = context.createBuffer(2, Math.ceil(seconds * rate), rate);
+    const taps = [
+      [0.0041, 0.72],
+      [0.0073, -0.5],
+      [0.0116, 0.4],
+      [0.0169, -0.31],
+      [0.0242, 0.23],
+      [0.0338, -0.16],
+    ];
+    for (let channel = 0; channel < 2; channel++) {
+      const data = impulse.getChannelData(channel);
+      taps.forEach(([time, gain], index) => {
+        const at = Math.floor(
+          time * (0.72 + size * 0.8) * rate + channel * (index % 2) * 3,
+        );
+        if (at < data.length)
+          data[at] += gain * (channel ? 1 : -1) ** index;
+      });
+      // A very short damped cluster fills between the discrete returns without becoming a long reverb.
+      let seed = 0x4a2c91 + channel;
+      let low = 0;
+      const smooth = 1 - Math.exp((-2 * Math.PI * 6200) / rate);
+      for (let i = Math.floor(0.004 * rate); i < data.length; i++) {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        const noise = seed / 2147483648 - 1;
+        low += smooth * (noise - low);
+        const t = i / rate;
+        data[i] +=
+          (low + (noise - low) * 0.25) *
+          Math.exp(-30 * t) *
+          (1 - i / data.length) ** 2 *
+          0.06;
+      }
     }
     return impulse;
   };
@@ -256,6 +302,8 @@ window.westplayCabSound = (media, say, state = {}) => {
         !outside &&
         flat() &&
         !spectrumWanted &&
+        !cabinToneOn() &&
+        !reflectionsOn() &&
         !reverbOn())
     )
       return;
@@ -268,7 +316,9 @@ window.westplayCabSound = (media, say, state = {}) => {
         nodes: [],
         meters: null,
         muffle: null,
+        cabin: null,
         reverb: null,
+        reflections: null,
         wired: undefined,
         playing: () =>
           node
@@ -308,6 +358,9 @@ window.westplayCabSound = (media, say, state = {}) => {
     for (const node of audio.nodes) node.disconnect();
     audio.nodes = [];
     audio.meters = null;
+    audio.cabin = null;
+    audio.reverb = null;
+    audio.reflections = null;
     audio.wired = speakers;
     const keep = (node) => {
       // qq_music.js watches nodes joining the page's destination to find QMA's output. Never mistake this
@@ -325,6 +378,32 @@ window.westplayCabSound = (media, say, state = {}) => {
     audio.source.connect(bands[0]);
     audio.tone = { bands, trim };
     setTone(true);
+    // The cabin's broad transfer, not a concert room: a little low-frequency gain, a gentle upper-mid
+    // recession and softer highs, then only enough compression to keep very dynamic material coherent.
+    let shaped = trim;
+    if (cabinToneOn()) {
+      const cabinBands = [
+        { type: "lowshelf", frequency: 90, gain: 2.4 },
+        { type: "peaking", frequency: 220, Q: 0.7, gain: 0.9 },
+        { type: "peaking", frequency: 2800, Q: 0.8, gain: -1.2 },
+        { type: "highshelf", frequency: 9000, gain: -1.1 },
+      ].map((options) => keep(new BiquadFilterNode(context, options)));
+      const compressor = keep(
+        new DynamicsCompressorNode(context, {
+          threshold: -16,
+          knee: 10,
+          ratio: 1.6,
+          attack: 0.015,
+          release: 0.25,
+        }),
+      );
+      shaped.connect(cabinBands[0]);
+      cabinBands
+        .reduce((from, to) => (from.connect(to), to))
+        .connect(compressor);
+      shaped = compressor;
+      audio.cabin = { bands: cabinBands, compressor };
+    }
     // Beside it, the spectrum's ear (measuring, playing nothing).
     audio.analyser = keep(
       new AnalyserNode(context, {
@@ -334,7 +413,7 @@ window.westplayCabSound = (media, say, state = {}) => {
         maxDecibels: -22,
       }),
     );
-    trim.connect(audio.analyser);
+    shaped.connect(audio.analyser);
     // Last of all, the cab's walls (open while the camera is in it).
     const walls = keep(
       new BiquadFilterNode(context, {
@@ -382,8 +461,29 @@ window.westplayCabSound = (media, say, state = {}) => {
       wet.connect(mix);
       audio.reverb = { highpass, lowpass, convolver, wet, size: reverb.size };
     }
+    if (reflectionsOn()) {
+      const highpass = keep(
+        new BiquadFilterNode(context, {
+          type: "highpass",
+          frequency: 120,
+          Q: Math.SQRT1_2,
+        }),
+      );
+      const convolver = keep(
+        new ConvolverNode(context, {
+          buffer: cabinEarlyImpulse(context),
+          disableNormalization: false,
+        }),
+      );
+      const wet = keep(new GainNode(context, { gain: reflectionGain() }));
+      through.connect(highpass);
+      highpass.connect(convolver);
+      convolver.connect(wet);
+      wet.connect(mix);
+      audio.reflections = { highpass, convolver, wet };
+    }
     if (!speakers) {
-      trim.connect(walls);
+      shaped.connect(walls);
       return;
     }
     // Stereo always (a mono video plays on both sides), then each side, and both mixed.
@@ -395,7 +495,7 @@ window.westplayCabSound = (media, say, state = {}) => {
       }),
     );
     const split = keep(context.createChannelSplitter(2));
-    trim.connect(stereo);
+    shaped.connect(stereo);
     stereo.connect(split);
     const channels = {
       left: keep(context.createGain()),
@@ -542,6 +642,19 @@ window.westplayCabSound = (media, say, state = {}) => {
       );
       setTone(false);
       try {
+        wire();
+      } catch {}
+    },
+    character(told) {
+      const next = ["reference", "equalized", "impulse", "full"].includes(
+        told,
+      )
+        ? told
+        : "full";
+      if (next === character) return;
+      character = next;
+      try {
+        if (audio) audio.wired = undefined;
         wire();
       } catch {}
     },

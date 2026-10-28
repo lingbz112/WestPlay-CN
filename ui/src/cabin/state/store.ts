@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
   type Equalizer,
+  type CabinCharacter,
+  DEFAULT_CABIN_CHARACTER,
   DEFAULT_REVERB,
   FLAT,
   type HostMessage,
@@ -17,6 +19,7 @@ import {
   type Telemetry,
   toEqualizer,
   toReverb,
+  toCabinCharacter,
   type TruckInfo,
 } from '../../shared/host'
 import type { Maneuver, TurnKind } from '../maps/guidance'
@@ -90,6 +93,8 @@ interface CabinState {
   equalizerCustom: boolean
   /** The cab's shared reverb (Settings › Sound › Cabin Reverb), kept with WestPlay's settings. */
   reverb: Reverb
+  /** The amount of cabin modelling used (Settings › Sound › Cabin Character). */
+  cabinCharacter: CabinCharacter
   power: PowerState
   /**
    * The screen is handed back to the truck (its stock screen shows, with WestPlay's button to come back),
@@ -111,6 +116,8 @@ interface CabinState {
   resetEqualizer(): void
   /** Changes the cab's reverb; every field not given stays as it is. */
   setReverb(change: Partial<Reverb>): void
+  /** Chooses how much of the cabin model every player uses. */
+  setCabinCharacter(character: CabinCharacter): void
   setOemMode(mode: OemMode): void
   /** The player's choice, in Settings: applied, and kept with WestPlay's settings. */
   chooseOemMode(mode: OemMode): void
@@ -139,6 +146,7 @@ export const useCabin = create<CabinState>()(
       equalizer: FLAT,
       equalizerCustom: false,
       reverb: DEFAULT_REVERB,
+      cabinCharacter: DEFAULT_CABIN_CHARACTER,
       power: INITIAL_POWER,
       navigate: (action) => set((state) => ({ navigation: navigate(state.navigation, action) })),
       setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
@@ -168,6 +176,10 @@ export const useCabin = create<CabinState>()(
         const reverb = toReverb({ ...useCabin.getState().reverb, ...change })
         set({ reverb })
         if (isInHost()) postToHost({ type: 'reverb', ...reverb })
+      },
+      setCabinCharacter: (character) => {
+        set({ cabinCharacter: character })
+        if (isInHost()) postToHost({ type: 'character', character })
       },
       setOemMode: (oemMode) => set({ oemMode }),
       chooseOemMode: (oemMode) => {
@@ -480,6 +492,7 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
           equalizer: toEqualizer(message.equalizer),
           equalizerCustom: message.equalizerCustom === true,
           reverb: toReverb(message.reverb),
+          cabinCharacter: toCabinCharacter(message.character),
         })
         setIcons({
           iconSet: message.iconSet ?? null,

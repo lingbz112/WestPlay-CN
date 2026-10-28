@@ -1900,6 +1900,7 @@
     outside: null,
     equalizer: null,
     reverb: null,
+    character: null,
     spectrum: false,
   };
   let sound = null;
@@ -1955,6 +1956,7 @@
       sound.outside(cab.outside.on, cab.outside.distance);
     if (cab.equalizer !== null) sound.equalizer(cab.equalizer);
     if (cab.reverb !== null) sound.reverb(cab.reverb);
+    if (cab.character !== null) sound.character(cab.character);
     sound.spectrum(cab.spectrum);
   };
   const CAB = {
@@ -1976,8 +1978,10 @@
     equalizer(data) {
       cab.equalizer = data;
       cab.reverb = data.reverb;
+      cab.character = data.character;
       sound?.equalizer(data);
       sound?.reverb(data.reverb);
+      sound?.character(data.character);
       tellRadio(data);
     },
     spectrum(data) {

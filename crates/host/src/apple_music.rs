@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, CabinCharacter, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, Stage};
 
 /// Apple Music's web player.
@@ -122,6 +122,7 @@ enum Cab {
         #[serde(flatten)]
         equalizer: Equalizer,
         reverb: Reverb,
+        character: CabinCharacter,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays.
     Spectrum {
@@ -136,7 +137,7 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<(Equalizer, Reverb)>,
+    equalizer: Option<(Equalizer, Reverb, CabinCharacter)>,
     spectrum: Option<bool>,
     messages: [Option<String>; 5],
 }
@@ -614,6 +615,7 @@ impl AppleMusic {
         distance: f32,
         equalizer: Equalizer,
         reverb: Reverb,
+        character: CabinCharacter,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -638,9 +640,9 @@ impl AppleMusic {
             told.messages[2] = Some(message.clone());
             self.view.post_json(&message)?;
         }
-        if told.equalizer != Some((equalizer, reverb)) {
-            told.equalizer = Some((equalizer, reverb));
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb }).unwrap_or_default();
+        if told.equalizer != Some((equalizer, reverb, character)) {
+            told.equalizer = Some((equalizer, reverb, character));
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character }).unwrap_or_default();
             told.messages[3] = Some(message.clone());
             self.view.post_json(&message)?;
         }
@@ -1012,7 +1014,16 @@ mod tests {
         // Through a Scania S's speakers, heard from the driver's seat (the way the cab plays it).
         let head = Head { x: -0.47, y: 1.33, z: 0.32, heading: 0.0, pitch: 0.0 };
         music
-            .cab(speakers::in_truck("scania.s_2016"), head, false, 0.0, Equalizer::default(), Reverb::default(), false)
+            .cab(
+                speakers::in_truck("scania.s_2016"),
+                head,
+                false,
+                0.0,
+                Equalizer::default(),
+                Reverb::default(),
+                CabinCharacter::Full,
+                false,
+            )
             .unwrap();
         music
             .command(&Command::Play {

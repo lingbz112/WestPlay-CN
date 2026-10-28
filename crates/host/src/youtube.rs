@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, CabinCharacter, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, PageSize, Stage};
 
 /// What the cabin page asks of YouTube's player, or of YouTube (`youtube` in ui/src/shared/host.ts).
@@ -91,6 +91,7 @@ pub enum Command {
         #[serde(flatten)]
         equalizer: Equalizer,
         reverb: Reverb,
+        character: CabinCharacter,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays. The host's
     /// own.
@@ -212,7 +213,7 @@ impl Command {
             Command::AudioTrack { id } => is_audio_track_id(id),
             Command::Head { head } => head.is_sound(),
             Command::Outside { distance, .. } => distance.is_finite() && (0.0..10_000.0).contains(distance),
-            Command::Equalizer { equalizer, reverb } => {
+            Command::Equalizer { equalizer, reverb, .. } => {
                 equalizer.clamped() == *equalizer && reverb.clamped() == *reverb
             }
             Command::Suggest { query, .. } => !query.trim().is_empty() && text(query),
@@ -688,7 +689,7 @@ type Told = (
     Option<Option<Vec<Speaker>>>,
     Option<Head>,
     Option<(bool, f32)>,
-    Option<(Equalizer, Reverb)>,
+    Option<(Equalizer, Reverb, CabinCharacter)>,
     Option<bool>,
 );
 
@@ -782,6 +783,7 @@ impl YouTube {
         distance: f32,
         equalizer: Equalizer,
         reverb: Reverb,
+        character: CabinCharacter,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut cab = self.cab.borrow_mut();
@@ -800,9 +802,9 @@ impl YouTube {
             cab.2 = Some(camera);
             self.pass(&Command::Outside { on: camera.0, distance: camera.1 })?;
         }
-        if cab.3 != Some((equalizer, reverb)) {
-            cab.3 = Some((equalizer, reverb));
-            self.pass(&Command::Equalizer { equalizer, reverb })?;
+        if cab.3 != Some((equalizer, reverb, character)) {
+            cab.3 = Some((equalizer, reverb, character));
+            self.pass(&Command::Equalizer { equalizer, reverb, character })?;
         }
         if cab.4 != Some(spectrum) {
             cab.4 = Some(spectrum);
@@ -1624,6 +1626,7 @@ mod tests {
                 0.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();
@@ -1670,6 +1673,7 @@ mod tests {
                 0.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();
@@ -1684,6 +1688,7 @@ mod tests {
                 0.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();
@@ -1699,6 +1704,7 @@ mod tests {
                 0.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();
@@ -1714,6 +1720,7 @@ mod tests {
                 20.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();
@@ -1728,6 +1735,7 @@ mod tests {
                 0.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();
@@ -1746,6 +1754,7 @@ mod tests {
                 0.0,
                 Equalizer::default(),
                 Reverb::default(),
+                CabinCharacter::Full,
                 false,
             )
             .unwrap();

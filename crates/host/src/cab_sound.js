@@ -259,6 +259,17 @@ window.westplayCabSound = (media, say, state = {}) => {
   const STILL_TURN = 1 / 360;
   const STILL_MOVE = 0.02;
   let placed = null;
+  let reflectionOrigin = null;
+  const CABIN_REFLECTIONS = [
+    { at: [-1.18, 0.18, -0.12], level: 0.24, lowpass: 7200 },
+    { at: [1.18, 0.18, -0.12], level: 0.24, lowpass: 7200 },
+    { at: [-0.34, 0.2, -1.28], level: 0.18, lowpass: 5600 },
+    { at: [0.34, 0.2, -1.28], level: 0.18, lowpass: 5600 },
+    { at: [-0.12, 0.9, 0.08], level: 0.13, lowpass: 4800 },
+    { at: [0.08, -0.22, -0.95], level: 0.11, lowpass: 4200 },
+    { at: [-0.18, 0.12, 1.35], level: 0.14, lowpass: 3600 },
+    { at: [0.18, 0.12, 1.35], level: 0.14, lowpass: 3600 },
+  ];
   const placeHead = () => {
     if (!audio || !head) return;
     const turn = (a, b) => Math.abs(((a - b + 1.5) % 1) - 0.5);
@@ -319,6 +330,7 @@ window.westplayCabSound = (media, say, state = {}) => {
         cabin: null,
         reverb: null,
         reflections: null,
+        earlyReflections: null,
         wired: undefined,
         playing: () =>
           node
@@ -361,6 +373,7 @@ window.westplayCabSound = (media, say, state = {}) => {
     audio.cabin = null;
     audio.reverb = null;
     audio.reflections = null;
+    audio.earlyReflections = null;
     audio.wired = speakers;
     const keep = (node) => {
       // qq_music.js watches nodes joining the page's destination to find QMA's output. Never mistake this
@@ -506,6 +519,40 @@ window.westplayCabSound = (media, say, state = {}) => {
     split.connect(channels.right, 1);
     split.connect(channels.both, 0);
     split.connect(channels.both, 1);
+    // Standard car bass management: below 90 Hz the cabin sums the channels to mono and bypasses the
+    // directional HRTF path. Above it, each side keeps its normal speaker imaging.
+    const BASS_CUTOFF = 90;
+    const highs = Object.fromEntries(
+      Object.entries(channels).map(([name, channel]) => {
+        const high = keep(
+          new BiquadFilterNode(context, {
+            type: "highpass",
+            frequency: BASS_CUTOFF,
+            Q: Math.SQRT1_2,
+          }),
+        );
+        channel.connect(high);
+        return [name, high];
+      }),
+    );
+    const bassMono = keep(
+      new GainNode(context, {
+        channelCount: 1,
+        channelCountMode: "explicit",
+        channelInterpretation: "speakers",
+        gain: 0.5,
+      }),
+    );
+    split.connect(bassMono, 0);
+    split.connect(bassMono, 1);
+    const bassLow = keep(
+      new BiquadFilterNode(context, {
+        type: "lowpass",
+        frequency: BASS_CUTOFF,
+        Q: Math.SQRT1_2,
+      }),
+    );
+    bassMono.connect(bassLow);
     // Made up for the distance as the speakers' power adds up at the seat (each plays its own part of the
     // sound): their loudnesses there, squared, summed. (Their average made it up far too much: a loud song
     // went past full, and the limiter squashed it all the time.)
@@ -536,8 +583,75 @@ window.westplayCabSound = (media, say, state = {}) => {
     );
     audio.limiter = limiter;
     // The walls after the limiter: it would make up what they take.
+    bassLow.connect(out);
     out.connect(limiter);
     limiter.connect(walls);
+    if (reflectionsOn() && head) {
+      // Discrete cabin reflections stay fixed to the interior while the listener turns. Unlike an
+      // omnidirectional reverb return, these carry stable directions from the side glass, windscreen,
+      // dashboard, roof and rear wall, so turning toward the A-pillar does not move the whole image.
+      reflectionOrigin ??= { x: head.x, y: head.y, z: head.z };
+      const side = speakers.map((speaker) => speaker.at[0]);
+      const cabCenterX = (Math.min(...side) + Math.max(...side)) / 2;
+      const scale = 0.88 + (level(reverb.size) / 100) * 0.24;
+      const early = [];
+      for (const reflection of CABIN_REFLECTIONS) {
+        const at = [
+          cabCenterX + reflection.at[0] * scale,
+          reflectionOrigin.y + reflection.at[1] * scale,
+          reflectionOrigin.z + reflection.at[2] * scale,
+        ];
+        const path = Math.hypot(
+          at[0] - reflectionOrigin.x,
+          at[1] - reflectionOrigin.y,
+          at[2] - reflectionOrigin.z,
+        );
+        const delay = keep(
+          new DelayNode(context, {
+            delayTime: Math.max(0.003, Math.min(0.04, (2 * path) / 343)),
+            maxDelayTime: 0.05,
+          }),
+        );
+        const highpass = keep(
+          new BiquadFilterNode(context, {
+            type: "highpass",
+            frequency: 110,
+            Q: Math.SQRT1_2,
+          }),
+        );
+        const lowpass = keep(
+          new BiquadFilterNode(context, {
+            type: "lowpass",
+            frequency: reflection.lowpass,
+            Q: Math.SQRT1_2,
+          }),
+        );
+        const levelNode = keep(
+          new GainNode(context, {
+            gain: reflection.level * (character === "full" ? 0.82 : 1),
+          }),
+        );
+        const panner = keep(
+          new PannerNode(context, {
+            panningModel: "HRTF",
+            distanceModel: "inverse",
+            refDistance: NEAR,
+            rolloffFactor: 1,
+            positionX: at[0],
+            positionY: at[1],
+            positionZ: at[2],
+          }),
+        );
+        shaped.connect(delay);
+        delay.connect(highpass);
+        highpass.connect(lowpass);
+        lowpass.connect(levelNode);
+        levelNode.connect(panner);
+        panner.connect(out);
+        early.push({ at, delay, highpass, lowpass, level: levelNode, panner });
+      }
+      audio.earlyReflections = early;
+    }
     // A meter on each ear.
     const ears = keep(context.createChannelSplitter(2));
     mix.connect(ears);
@@ -547,7 +661,12 @@ window.westplayCabSound = (media, say, state = {}) => {
       return meter;
     });
     for (const speaker of speakers) {
-      let node = channels[speaker.channel];
+      let node =
+        speaker.channel === "left"
+          ? highs.left
+          : speaker.channel === "right"
+            ? highs.right
+            : highs.both;
       const [from, to] = speaker.band;
       const filters = [
         ...(from > 0 ? [["highpass", from]] : []),
@@ -613,6 +732,7 @@ window.westplayCabSound = (media, say, state = {}) => {
   return {
     speakers(list) {
       speakers = list ?? null;
+      reflectionOrigin = null;
       try {
         wire();
       } catch {}

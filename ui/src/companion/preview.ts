@@ -89,6 +89,7 @@ const accounts = {
   youtube: true as boolean | null,
   spotify: false as boolean | null,
   appleMusic: false as boolean | null,
+  qqMusic: false as boolean | null,
   signingIn: '',
 }
 
@@ -138,6 +139,8 @@ function status(): HostStatus {
     spotifySigningIn: accounts.signingIn === 'spotify',
     appleMusicSignedIn: accounts.appleMusic,
     appleMusicSigningIn: accounts.signingIn === 'appleMusic',
+    qqMusicSignedIn: accounts.qqMusic,
+    qqMusicSigningIn: accounts.signingIn === 'qqMusic',
     map,
     mapFolder: null,
     mapBuilt: map.state === 'ready' ? Math.floor(Date.now() / 1000) - 3 * 86_400 : null,
@@ -187,8 +190,8 @@ function setLook(change: Partial<Settings['look']>) {
 
 const later = <T>(value: T, ms = 300) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms))
 
-/** A sign-in: Google's, Spotify's or Apple's window "open" a moment, then signed in. */
-function signIn(service: 'youtube' | 'spotify' | 'appleMusic') {
+/** A sign-in: the service's window "open" a moment, then signed in. */
+function signIn(service: 'youtube' | 'spotify' | 'appleMusic' | 'qqMusic') {
   accounts.signingIn = service
   emit('host-status', status())
   setTimeout(() => {
@@ -301,6 +304,7 @@ export function answer(command: string, args?: Record<string, unknown>): Promise
     case 'youtube_check':
     case 'spotify_check':
     case 'apple_music_check':
+    case 'qq_music_check':
       return later(undefined)
     case 'youtube_sign_in':
       signIn('youtube')
@@ -310,6 +314,9 @@ export function answer(command: string, args?: Record<string, unknown>): Promise
       return later(undefined)
     case 'apple_music_sign_in':
       signIn('appleMusic')
+      return later(undefined)
+    case 'qq_music_sign_in':
+      signIn('qqMusic')
       return later(undefined)
     case 'open_support_page':
       window.open('https://kreosus.com/enes-less', '_blank', 'noopener')
@@ -331,6 +338,12 @@ export function answer(command: string, args?: Record<string, unknown>): Promise
     case 'apple_music_sign_out':
       setTimeout(() => {
         accounts.appleMusic = false
+        emit('host-status', status())
+      }, 1200)
+      return later(undefined)
+    case 'qq_music_sign_out':
+      setTimeout(() => {
+        accounts.qqMusic = false
         emit('host-status', status())
       }, 1200)
       return later(undefined)

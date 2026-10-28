@@ -170,6 +170,12 @@ export const words: Words = {
     finishInWindow: 'Apple Music penceresinde oturum açmayı tamamla',
     signingIn: { title: 'Apple Music’te oturum açılıyor', text: 'Apple Music penceresinden devam et' },
   },
+  qqMusic: {
+    title: 'QQ Music’te oturum aç',
+    sub: 'İsteğe bağlı. Oturum açarsan kamyonun ekranında kendi çalma listelerin ve kitaplığınla QQ Music dinlersin. QQ Music’in kendi penceresinde oturum açarsın; WestPlay hesap bilgilerini görmez.',
+    finishInWindow: 'QQ Music penceresinde oturum açmayı tamamla',
+    signingIn: { title: 'QQ Music’te oturum açılıyor', text: 'QQ Music penceresinden devam et' },
+  },
   launch: {
     title: 'Her şey hazır',
     done: 'Bitti',

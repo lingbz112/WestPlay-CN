@@ -15,6 +15,9 @@ import {
   appleMusicCheck,
   appleMusicSignIn,
   appleMusicSignOut,
+  qqMusicCheck,
+  qqMusicSignIn,
+  qqMusicSignOut,
   spotifyCheck,
   spotifySignIn,
   spotifySignOut,
@@ -65,7 +68,7 @@ import {
   useTour,
 } from '../room/screen'
 import { useDemo } from '../room/useDemo'
-import { count, languageOf, list, percent, wordsFor } from './words'
+import { count, languageOf, list, percent, qqMusicWords, type Words, wordsFor } from './words'
 
 const STEPS = [
   'welcome',
@@ -77,6 +80,7 @@ const STEPS = [
   'accounts',
   'spotify',
   'appleMusic',
+  'qqMusic',
   'tutorial',
 ] as const
 type StepId = (typeof STEPS)[number]
@@ -91,6 +95,7 @@ const POSES: Record<StepId, Pose> = {
   accounts: 'side',
   spotify: 'side',
   appleMusic: 'side',
+  qqMusic: 'side',
   tutorial: 'final',
 }
 
@@ -281,6 +286,7 @@ export function Onboarding({
             {step === 'accounts' && <Accounts status={status} next={next} back={back} />}
             {step === 'spotify' && <ServiceSignIn service="spotify" status={status} next={next} back={back} />}
             {step === 'appleMusic' && <ServiceSignIn service="appleMusic" status={status} next={next} back={back} />}
+            {step === 'qqMusic' && <ServiceSignIn service="qqMusic" status={status} next={next} back={back} />}
             {step === 'tutorial' && <TutorialIntro code={code} finish={finish} back={back} />}
           </ScreenContext.Provider>
         </RoomText.Provider>
@@ -839,6 +845,7 @@ const SERVICE_STEPS = {
     check: spotifyCheck,
     signIn: spotifySignIn,
     signOut: spotifySignOut,
+    words: (words: Words) => words.spotify,
   },
   appleMusic: {
     name: 'Apple Music',
@@ -849,6 +856,18 @@ const SERVICE_STEPS = {
     check: appleMusicCheck,
     signIn: appleMusicSignIn,
     signOut: appleMusicSignOut,
+    words: (words: Words) => words.appleMusic,
+  },
+  qqMusic: {
+    name: 'QQ Music',
+    app: 'qqMusic',
+    glow: GLOW.qqMusic,
+    signedIn: (status: HostStatus | null) => status?.qqMusicSignedIn,
+    signingIn: (status: HostStatus | null) => status?.qqMusicSigningIn ?? false,
+    check: qqMusicCheck,
+    signIn: qqMusicSignIn,
+    signOut: qqMusicSignOut,
+    words: qqMusicWords,
   },
 } as const
 
@@ -871,7 +890,7 @@ function ServiceSignIn({
   const signOut = useSignOut(signedIn, it.signOut)
   const words = useWords()
   const w = words.accounts
-  const s = words[service]
+  const s = it.words(words)
   useScreenAt(it.app, it.glow, signingIn ? banner(s.signingIn, true) : null)
   return (
     <Panel

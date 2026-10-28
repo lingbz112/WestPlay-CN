@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type HostStatus, appleMusicCheck, spotifyCheck, youtubeCheck } from './useHostStatus'
+import { type HostStatus, appleMusicCheck, qqMusicCheck, spotifyCheck, youtubeCheck } from './useHostStatus'
 
 /**
  * Whether each service is signed in, as the companion last knew: shown at once when it opens, kept up to date
@@ -11,11 +11,12 @@ export interface SignedIn {
   youtube: boolean | null
   spotify: boolean | null
   appleMusic: boolean | null
+  qqMusic: boolean | null
 }
 
 export type Service = keyof SignedIn
 
-const SERVICES: Service[] = ['youtube', 'spotify', 'appleMusic']
+const SERVICES: Service[] = ['youtube', 'spotify', 'appleMusic', 'qqMusic']
 
 const KEY = 'westplay.companion.signedIn'
 
@@ -27,7 +28,12 @@ function kept(): SignedIn {
     // Nothing kept: each is asked.
   }
   const known = (service: Service) => (typeof value?.[service] === 'boolean' ? (value[service] as boolean) : null)
-  return { youtube: known('youtube'), spotify: known('spotify'), appleMusic: known('appleMusic') }
+  return {
+    youtube: known('youtube'),
+    spotify: known('spotify'),
+    appleMusic: known('appleMusic'),
+    qqMusic: known('qqMusic'),
+  }
 }
 
 function keep(value: SignedIn) {
@@ -45,6 +51,7 @@ export function useSignedIn(status: HostStatus | null): SignedIn {
     youtube: status?.youtubeSignedIn ?? null,
     spotify: status?.spotifySignedIn ?? null,
     appleMusic: status?.appleMusicSignedIn ?? null,
+    qqMusic: status?.qqMusicSignedIn ?? null,
   }
   useEffect(() => {
     if (SERVICES.every((service) => now[service] === null)) return
@@ -53,14 +60,16 @@ export function useSignedIn(status: HostStatus | null): SignedIn {
       youtube: now.youtube ?? before.youtube,
       spotify: now.spotify ?? before.spotify,
       appleMusic: now.appleMusic ?? before.appleMusic,
+      qqMusic: now.qqMusic ?? before.qqMusic,
     })
-    // Keyed by the three answers (`now` itself is new at every render).
+    // Keyed by the answers (`now` itself is new at every render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now.youtube, now.spotify, now.appleMusic])
+  }, [now.youtube, now.spotify, now.appleMusic, now.qqMusic])
   return {
     youtube: now.youtube ?? known.youtube,
     spotify: now.spotify ?? known.spotify,
     appleMusic: now.appleMusic ?? known.appleMusic,
+    qqMusic: now.qqMusic ?? known.qqMusic,
   }
 }
 
@@ -71,5 +80,6 @@ export function useAskOnce(): void {
     if (known.youtube === null) youtubeCheck().catch(() => {})
     if (known.spotify === null) spotifyCheck().catch(() => {})
     if (known.appleMusic === null) appleMusicCheck().catch(() => {})
+    if (known.qqMusic === null) qqMusicCheck().catch(() => {})
   }, [])
 }

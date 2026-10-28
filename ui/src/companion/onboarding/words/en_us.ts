@@ -170,6 +170,12 @@ export const words: Words = {
     finishInWindow: 'Finish signing in in the Apple Music window',
     signingIn: { title: 'Signing in to Apple Music', text: 'Continue in the Apple Music window' },
   },
+  qqMusic: {
+    title: 'Sign in to QQ Music',
+    sub: 'Optional. Sign in to play QQ Music on the truck’s screen, with your own playlists and library. You sign in to QQ Music in its own window, and WestPlay never sees your account details.',
+    finishInWindow: 'Finish signing in in the QQ Music window',
+    signingIn: { title: 'Signing in to QQ Music', text: 'Continue in the QQ Music window' },
+  },
   launch: {
     title: 'You’re all set',
     done: 'Done',

@@ -173,6 +173,13 @@ export interface Words {
     finishInWindow: string
     signingIn: Note
   }
+  /** QQ Music's sign-in step, as Spotify's. Languages not translated yet use English. */
+  qqMusic?: {
+    title: string
+    sub: string
+    finishInWindow: string
+    signingIn: Note
+  }
   launch: {
     title: string
     done: string
@@ -245,6 +252,18 @@ export function languageOf(tags: readonly string[]): string {
 /** The words in the game's language `code` (English for one without). */
 export function wordsFor(code: string): Words {
   return WORDS[code] ?? WORDS.en_us
+}
+
+/** QQ Music's words: its own where translated, English elsewhere. */
+export function qqMusicWords(words: Words): NonNullable<Words['qqMusic']> {
+  return (
+    words.qqMusic ?? {
+      title: 'Sign in to QQ Music',
+      sub: 'Optional. Sign in to play QQ Music on the truck’s screen, with your own playlists and library. You sign in to QQ Music in its own window, and WestPlay never sees your account details.',
+      finishInWindow: 'Finish signing in in the QQ Music window',
+      signingIn: { title: 'Signing in to QQ Music', text: 'Continue in the QQ Music window' },
+    }
+  )
 }
 
 /** The languages there are words for. */

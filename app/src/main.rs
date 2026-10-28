@@ -116,6 +116,24 @@ fn apple_music_check(accounts: State<Accounts>) {
     accounts.0.apple_music.request(AccountAction::Check);
 }
 
+/// Opens QQ Music's sign-in dialog in a window on the desktop (the status then says when it's done).
+#[tauri::command]
+fn qq_music_sign_in(accounts: State<Accounts>) {
+    accounts.0.qq_music.request(AccountAction::SignIn);
+}
+
+/// Signs QQ Music out.
+#[tauri::command]
+fn qq_music_sign_out(accounts: State<Accounts>) {
+    accounts.0.qq_music.request(AccountAction::SignOut);
+}
+
+/// Runs QQ Music's web pages (hidden), so the status says whether it's signed in.
+#[tauri::command]
+fn qq_music_check(accounts: State<Accounts>) {
+    accounts.0.qq_music.request(AccountAction::Check);
+}
+
 /// The maker's Kreosus page, where players support WestPlay's development.
 const SUPPORT_PAGE: &str = "https://kreosus.com/enes-less";
 
@@ -190,6 +208,9 @@ fn main() {
             apple_music_sign_in,
             apple_music_sign_out,
             apple_music_check,
+            qq_music_sign_in,
+            qq_music_sign_out,
+            qq_music_check,
             open_support_page,
             app_log_place,
             customize::customize_list,

@@ -111,6 +111,9 @@ pub struct Status {
     /// window open.
     pub apple_music_signed_in: Option<bool>,
     pub apple_music_signing_in: bool,
+    /// The same of QQ Music: signed in or not (`None`: not known, QQ Music not run yet), its sign-in window open.
+    pub qq_music_signed_in: Option<bool>,
+    pub qq_music_signing_in: bool,
     /// The map of the profile played: ready, being built, waiting for the game to close...
     pub map: maps::MapStatus,
     /// The map the cab shows: its folder in WestPlay's maps, and when it was built (the companion's
@@ -122,13 +125,14 @@ pub struct Status {
     pub error: Option<String>,
 }
 
-/// The companion window's requests to sign YouTube, Spotify or Apple Music in or out (or to know whether it
-/// is), from any thread, for the host to carry out as the cab's apps would.
+/// The companion window's requests to sign YouTube, Spotify, Apple Music or QQ Music in or out (or to know
+/// whether it is), from any thread, for the host to carry out as the cab's apps would.
 #[derive(Debug, Default)]
 pub struct AccountRequests {
     pub youtube: AccountRequest,
     pub spotify: AccountRequest,
     pub apple_music: AccountRequest,
+    pub qq_music: AccountRequest,
 }
 
 /// One service's request, the latest not carried out yet.
@@ -467,8 +471,8 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
         if let Some(open) = config.open_request.take() {
             let _ = webview.post_json(&westplay_message(open));
         }
-        // The companion's YouTube, Spotify and Apple Music sign-ins or sign-outs, as the cab's would be (or only
-        // running it, to know whether it's signed in).
+        // The companion's YouTube, Spotify, Apple Music and QQ Music sign-ins or sign-outs, as the cab's would be
+        // (or only running it, to know whether it's signed in).
         if let Some(action) = config.accounts.youtube.take()
             && let Some(player) = start_youtube(&mut youtube, &stage, &config)
         {
@@ -500,6 +504,15 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 AccountAction::SignIn => apple_music::Command::SignIn,
                 AccountAction::SignOut => apple_music::Command::SignOut,
                 AccountAction::Check => apple_music::Command::Start,
+            });
+        }
+        if let Some(action) = config.accounts.qq_music.take()
+            && let Some(player) = start_qq_music(&mut qq_music, &stage, &config)
+        {
+            let _ = player.command(&match action {
+                AccountAction::SignIn => qq_music::Command::SignIn,
+                AccountAction::SignOut => qq_music::Command::SignOut,
+                AccountAction::Check => qq_music::Command::Start,
             });
         }
 
@@ -1380,6 +1393,9 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 }
                 qq_music_state = None;
                 (qq_music_window_open, qq_music_confirming) = (false, false);
+                status.qq_music_signed_in = None;
+                status.qq_music_signing_in = false;
+                (config.on_status)(&status);
                 let _ = webview.post_json(&qq_music::state_message(None, false));
                 let _ = webview.post_json(&qq_music::playback_message(None));
             } else {
@@ -1421,6 +1437,19 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 }
                 if state_changed {
                     let signing_in = qq_music_window_open || qq_music_confirming;
+                    let signed_in = qq_music_state.as_ref().map(|state| state.signed_in);
+                    let mut status_changed = false;
+                    if status.qq_music_signed_in != signed_in {
+                        status.qq_music_signed_in = signed_in;
+                        status_changed = true;
+                    }
+                    if status.qq_music_signing_in != signing_in {
+                        status.qq_music_signing_in = signing_in;
+                        status_changed = true;
+                    }
+                    if status_changed {
+                        (config.on_status)(&status);
+                    }
                     let message = qq_music::state_message(qq_music_state.as_ref(), signing_in);
                     let _ = webview.post_json(&message);
                 }
@@ -2646,10 +2675,13 @@ mod tests {
         requests.youtube.request(AccountAction::SignOut);
         requests.youtube.request(AccountAction::SignIn);
         requests.spotify.request(AccountAction::Check);
+        requests.qq_music.request(AccountAction::SignIn);
         assert_eq!(requests.youtube.take(), Some(AccountAction::SignIn));
         assert_eq!(requests.youtube.take(), None);
         assert_eq!(requests.spotify.take(), Some(AccountAction::Check));
         assert_eq!(requests.spotify.take(), None);
+        assert_eq!(requests.qq_music.take(), Some(AccountAction::SignIn));
+        assert_eq!(requests.qq_music.take(), None);
         // The companion hears whether YouTube is signed in, and nothing more of the account.
         let status = super::Status { youtube_signed_in: Some(true), youtube_signing_in: false, ..Default::default() };
         let json = serde_json::to_value(&status).unwrap();
@@ -2662,6 +2694,10 @@ mod tests {
         let json = serde_json::to_value(&status).unwrap();
         let apple_music = (json["appleMusicSignedIn"].as_bool(), json["appleMusicSigningIn"].as_bool());
         assert_eq!(apple_music, (Some(true), Some(true)));
+        let status = super::Status { qq_music_signed_in: Some(false), qq_music_signing_in: true, ..Default::default() };
+        let json = serde_json::to_value(&status).unwrap();
+        let qq_music = (json["qqMusicSignedIn"].as_bool(), json["qqMusicSigningIn"].as_bool());
+        assert_eq!(qq_music, (Some(false), Some(true)));
     }
 
     #[test]

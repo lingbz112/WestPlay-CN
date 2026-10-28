@@ -1,5 +1,7 @@
 # WestPlay Unofficial Enhanced Fork
 
+**English** | [中文说明](README.zh-CN.md)
+
 > [!WARNING]
 > **Known issue: screen recordings flicker when NVIDIA App desktop capture is enabled.**
 >

@@ -1,5 +1,12 @@
 # WestPlay 非官方增强分支
 
+> [!WARNING]
+> **已知问题：开启 NVIDIA App 桌面捕获时，录屏画面会闪烁。**
+>
+> 原因是 NVIDIA App 的桌面捕获会把 WestPlay 用于车机渲染的 WebView2/Chromium 辅助画面也纳入捕获路径，导致录像在实际游戏画面、浏览器画面和车机画面之间来回切换。
+>
+> **临时解决方案：关闭 NVIDIA App 的桌面捕获后再录屏。** 该问题时至目前无法在 WestPlay 技术层面稳定修复。
+
 本仓库是基于 [enes-less/WestPlay](https://github.com/enes-less/WestPlay) `2.1.4` 的个人维护分支，主要用于国内音乐平台适配、中文本地化和车舱音频增强。
 
 具体的软件包、更新内容和已知问题只在本仓库的 [Releases](https://github.com/lingbz112/WestPlay/releases) 中发布；README 只保留版本关系和必要说明。

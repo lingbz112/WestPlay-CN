@@ -1,40 +1,42 @@
-# WestPlay 非官方增强分支
+# WestPlay Unofficial Enhanced Fork
 
 > [!WARNING]
-> **已知问题：开启 NVIDIA App 桌面捕获时，录屏画面会闪烁。**
+> **Known issue: screen recordings flicker when NVIDIA App desktop capture is enabled.**
 >
-> 原因是 NVIDIA App 的桌面捕获会把 WestPlay 用于车机渲染的 WebView2/Chromium 辅助画面也纳入捕获路径，导致录像在实际游戏画面、浏览器画面和车机画面之间来回切换。
+> NVIDIA App desktop capture also includes the WebView2/Chromium composition surfaces WestPlay uses to render the truck screen. As a result, recordings alternate between the game, browser and truck-screen images.
 >
-> **临时解决方案：关闭 NVIDIA App 的桌面捕获后再录屏。** 该问题时至目前无法在 WestPlay 技术层面稳定修复。
+> **Workaround: disable desktop capture in NVIDIA App before recording.**
+>
+> This issue cannot currently be fixed reliably on the WestPlay side.
 
-本仓库是基于 [enes-less/WestPlay](https://github.com/enes-less/WestPlay) `2.1.4` 的个人维护分支，主要用于国内音乐平台适配、中文本地化和车舱音频增强。
+This repository is a personal maintenance fork of [enes-less/WestPlay](https://github.com/enes-less/WestPlay), based on version `2.1.4`. It focuses on Chinese music-service integrations, Chinese localization and cabin audio enhancements.
 
-具体的软件包、更新内容和已知问题只在本仓库的 [Releases](https://github.com/lingbz112/WestPlay/releases) 中发布；README 只保留版本关系和必要说明。
+Packages, release notes and known issues are published only in this repository's [Releases](https://github.com/lingbz112/WestPlay/releases). This README is limited to version information and essential notices.
 
-## 与上游的区别
+## Differences from upstream
 
-- 接入国内在线音乐服务，目前包含 QQ 音乐，并使用现有音乐应用的车机交互方式。
-- 增加中文使用环境和国内音乐服务所需的本地化调整。
-- 增强车舱声场，包括车舱 EQ/IR、独立混响、固定方向早期反射和无方向性低音管理。
-- 增加播放/暂停、上一曲和下一曲的全局快捷键。
+- Integrates Chinese online music services, currently including QQ Music, using the existing in-vehicle music-app interaction model.
+- Adds Chinese localization and adjustments required by Chinese music services.
+- Enhances cabin audio with cabin EQ/IR, independent reverb, fixed-direction early reflections and directionless bass management.
+- Adds global play/pause, previous-track and next-track keyboard shortcuts.
 
-后续国内音乐平台会继续合并到同一个分支，不按应用拆分长期分支。
+Additional Chinese music platforms will continue to be merged into the same branch. No separate long-lived branch will be created for each app.
 
-## 版本关系
+## Versioning
 
-- 上游版本：`WestPlay 2.1.4`
-- 上游提交：`92c3d55`
-- 本分支长期分支：`main`
-- Fork 发布标签建议格式：`v<上游版本>-cn.<修订号>`
+- Upstream version: `WestPlay 2.1.4`
+- Upstream commit: `92c3d55`
+- Long-lived fork branch: `main`
+- Fork release tag format: `v<upstream-version>-cn.<revision>`
 
-例如同一上游版本下的第 1、2 个 Fork 发布版分别使用 `v2.1.4-cn.1`、`v2.1.4-cn.2`。上游升级到 2.1.5 后，从 `v2.1.5-cn.1` 重新开始。
+For example, the first and second fork releases based on the same upstream version use `v2.1.4-cn.1` and `v2.1.4-cn.2`. After the upstream version advances to 2.1.5, fork revisions restart at `v2.1.5-cn.1`.
 
-## 许可证与法律信息
+## License and legal information
 
-本项目沿用上游 WestPlay 的 **GNU General Public License v3.0 or later（GPL-3.0-or-later）**。原项目版权归原作者和其他贡献者所有，本分支修改部分同样按 GPL-3.0-or-later 分发。完整条款见 [`LICENSE`](LICENSE)，第三方组件和声明见 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+This project follows the upstream WestPlay license, the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. Copyright in the original project remains with its original author and other contributors. Changes in this fork are also distributed under GPL-3.0-or-later. See [`LICENSE`](LICENSE) for the full terms and [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for third-party components and notices.
 
-这是非官方社区修改版，与腾讯、QQ 音乐及其关联公司没有隶属、授权、合作或背书关系。QQ 音乐及相关名称、图标、商标和素材的权利归各自权利人所有；仓库中的名称或图标仅用于识别兼容服务，不构成 GPL 授权。
+This is an unofficial community fork. It is not affiliated with, authorized by, partnered with, or endorsed by Tencent, QQ Music, or their affiliates. The QQ Music name, icon, trademarks, service marks and related assets remain the property of their respective owners. Their inclusion in this repository identifies the compatible service only and does not grant a license under the GPL.
 
-QQ 音乐的账号、内容和使用方式受其服务条款及适用法律约束。本项目不提供音乐内容，不绕过付费、版权保护或访问控制，也不授予任何第三方内容的使用权。网页播放器不是稳定的公开接口，服务变化可能导致功能失效。
+QQ Music accounts, content and usage are subject to QQ Music's terms of service and applicable law. This project does not provide music content, bypass payment, copyright protection or access controls, or grant any rights to third-party content. The web player is not a stable public integration interface, and service changes may break related functionality.
 
-用户登录信息和 cookie 保存在本机 WebView2 配置中，本分支不会将其上传到 WestPlay 自有服务器。软件按“现状”提供，不附带明示或默示担保，维护者不对使用本软件造成的损失承担责任。
+User login information and cookies remain in the local WebView2 profile. This fork does not upload them to a WestPlay-operated server. The software is provided "as is", without express or implied warranty. The maintainer is not liable for losses resulting from use of this software.

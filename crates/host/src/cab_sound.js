@@ -88,11 +88,13 @@ window.westplayCabSound = (media, say, state = {}) => {
     const lift = Math.max(0, ...TONE.map(([band]) => equalizer[band]));
     set(audio.tone.trim.gain, 10 ** (-lift / 20));
   };
-  // The cab's shared reverb: a short early-reflection cluster and a damped diffuse tail, generated for the
-  // chosen room size. It is a send after the speaker mix, so the direct sound keeps its exact speaker position
-  // while the reflections fill the same interior. A 180 Hz high-pass keeps heavy bass out of the tail.
+  // Cabin character and reverb are independent layers. Cabin IR adds short reflections; the reverb page adds
+  // a damped diffuse tail generated for the chosen room size. Both are sends after the speaker mix, so the
+  // direct sound keeps its speaker position. A 180 Hz high-pass keeps heavy bass out of the diffuse tail.
   let character = "full";
   let reverb = { enabled: true, size: 55, amount: 32 };
+  let reflectionAmount = 100;
+  let bassCutoff = 60;
   let reverbTimer = null;
   const level = (value, most = 100) =>
     Math.max(0, Math.min(most, Number(value) || 0));
@@ -100,9 +102,10 @@ window.westplayCabSound = (media, say, state = {}) => {
     character === "equalized" || character === "full";
   const reflectionsOn = () => character === "impulse" || character === "full";
   const reverbOn = () =>
-    character === "full" && reverb.enabled && reverb.amount > 0;
+    reverb.enabled && reverb.amount > 0;
   const reverbGain = () => (reverb.amount / 100) ** 1.35 * 0.75;
-  const reflectionGain = () => (character === "full" ? 0.18 : 0.32);
+  const reflectionGain = () =>
+    (character === "full" ? 0.18 : 0.32) * (reflectionAmount / 100);
   const cabinImpulse = (context) => {
     const size = level(reverb.size) / 100;
     const seconds = 0.42 + size * 1.18;
@@ -331,6 +334,7 @@ window.westplayCabSound = (media, say, state = {}) => {
         reverb: null,
         reflections: null,
         earlyReflections: null,
+        bassManagement: null,
         wired: undefined,
         playing: () =>
           node
@@ -374,6 +378,7 @@ window.westplayCabSound = (media, say, state = {}) => {
     audio.reverb = null;
     audio.reflections = null;
     audio.earlyReflections = null;
+    audio.bassManagement = null;
     audio.wired = speakers;
     const keep = (node) => {
       // qq_music.js watches nodes joining the page's destination to find QMA's output. Never mistake this
@@ -519,15 +524,14 @@ window.westplayCabSound = (media, say, state = {}) => {
     split.connect(channels.right, 1);
     split.connect(channels.both, 0);
     split.connect(channels.both, 1);
-    // Standard car bass management: below 90 Hz the cabin sums the channels to mono and bypasses the
+    // Standard car bass management: below the selected cutoff the cabin sums the channels to mono and bypasses the
     // directional HRTF path. Above it, each side keeps its normal speaker imaging.
-    const BASS_CUTOFF = 90;
     const highs = Object.fromEntries(
       Object.entries(channels).map(([name, channel]) => {
         const high = keep(
           new BiquadFilterNode(context, {
             type: "highpass",
-            frequency: BASS_CUTOFF,
+            frequency: bassCutoff,
             Q: Math.SQRT1_2,
           }),
         );
@@ -548,11 +552,12 @@ window.westplayCabSound = (media, say, state = {}) => {
     const bassLow = keep(
       new BiquadFilterNode(context, {
         type: "lowpass",
-        frequency: BASS_CUTOFF,
+        frequency: bassCutoff,
         Q: Math.SQRT1_2,
       }),
     );
     bassMono.connect(bassLow);
+    audio.bassManagement = { highs, bassLow };
     // Made up for the distance as the speakers' power adds up at the seat (each plays its own part of the
     // sound): their loudnesses there, squared, summed. (Their average made it up far too much: a loud song
     // went past full, and the limiter squashed it all the time.)
@@ -626,9 +631,10 @@ window.westplayCabSound = (media, say, state = {}) => {
             Q: Math.SQRT1_2,
           }),
         );
+        const base = reflection.level * (character === "full" ? 0.82 : 1);
         const levelNode = keep(
           new GainNode(context, {
-            gain: reflection.level * (character === "full" ? 0.82 : 1),
+            gain: base * (reflectionAmount / 100),
           }),
         );
         const panner = keep(
@@ -648,7 +654,7 @@ window.westplayCabSound = (media, say, state = {}) => {
         lowpass.connect(levelNode);
         levelNode.connect(panner);
         panner.connect(out);
-        early.push({ at, delay, highpass, lowpass, level: levelNode, panner });
+        early.push({ at, delay, highpass, lowpass, level: levelNode, base, panner });
       }
       audio.earlyReflections = early;
     }
@@ -789,6 +795,35 @@ window.westplayCabSound = (media, say, state = {}) => {
         if (audio?.reverb) updateReverb(false);
         wire();
       } catch {}
+    },
+    reflection(told) {
+      reflectionAmount = level(told?.amount);
+      if (!audio) return;
+      const { currentTime } = audio.context;
+      if (audio.reflections?.wet)
+        audio.reflections.wet.gain.setTargetAtTime(
+          reflectionGain(),
+          currentTime,
+          0.08,
+        );
+      for (const reflection of audio.earlyReflections ?? [])
+        reflection.level.gain.setTargetAtTime(
+          reflection.base * (reflectionAmount / 100),
+          currentTime,
+          0.08,
+        );
+    },
+    bass(told) {
+      bassCutoff = Math.max(30, Math.min(150, Number(told?.cutoff) || 60));
+      if (!audio?.bassManagement) return;
+      const { currentTime } = audio.context;
+      for (const high of Object.values(audio.bassManagement.highs))
+        high.frequency.setTargetAtTime(bassCutoff, currentTime, 0.05);
+      audio.bassManagement.bassLow.frequency.setTargetAtTime(
+        bassCutoff,
+        currentTime,
+        0.05,
+      );
     },
     outside(on, far) {
       const cut = outside !== on;

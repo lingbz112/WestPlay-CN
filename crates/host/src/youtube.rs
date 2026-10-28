@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, CabinCharacter, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, BassManagement, CabinCharacter, CabinReflection, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, PageSize, Stage};
 
 /// What the cabin page asks of YouTube's player, or of YouTube (`youtube` in ui/src/shared/host.ts).
@@ -92,6 +92,8 @@ pub enum Command {
         equalizer: Equalizer,
         reverb: Reverb,
         character: CabinCharacter,
+        reflection: CabinReflection,
+        bass: BassManagement,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays. The host's
     /// own.
@@ -213,8 +215,11 @@ impl Command {
             Command::AudioTrack { id } => is_audio_track_id(id),
             Command::Head { head } => head.is_sound(),
             Command::Outside { distance, .. } => distance.is_finite() && (0.0..10_000.0).contains(distance),
-            Command::Equalizer { equalizer, reverb, .. } => {
-                equalizer.clamped() == *equalizer && reverb.clamped() == *reverb
+            Command::Equalizer { equalizer, reverb, reflection, bass, .. } => {
+                equalizer.clamped() == *equalizer
+                    && reverb.clamped() == *reverb
+                    && reflection.clamped() == *reflection
+                    && bass.clamped() == *bass
             }
             Command::Suggest { query, .. } => !query.trim().is_empty() && text(query),
             _ => true,
@@ -689,7 +694,7 @@ type Told = (
     Option<Option<Vec<Speaker>>>,
     Option<Head>,
     Option<(bool, f32)>,
-    Option<(Equalizer, Reverb, CabinCharacter)>,
+    Option<(Equalizer, Reverb, CabinCharacter, CabinReflection, BassManagement)>,
     Option<bool>,
 );
 
@@ -784,6 +789,8 @@ impl YouTube {
         equalizer: Equalizer,
         reverb: Reverb,
         character: CabinCharacter,
+        reflection: CabinReflection,
+        bass: BassManagement,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut cab = self.cab.borrow_mut();
@@ -802,9 +809,9 @@ impl YouTube {
             cab.2 = Some(camera);
             self.pass(&Command::Outside { on: camera.0, distance: camera.1 })?;
         }
-        if cab.3 != Some((equalizer, reverb, character)) {
-            cab.3 = Some((equalizer, reverb, character));
-            self.pass(&Command::Equalizer { equalizer, reverb, character })?;
+        if cab.3 != Some((equalizer, reverb, character, reflection, bass)) {
+            cab.3 = Some((equalizer, reverb, character, reflection, bass));
+            self.pass(&Command::Equalizer { equalizer, reverb, character, reflection, bass })?;
         }
         if cab.4 != Some(spectrum) {
             cab.4 = Some(spectrum);
@@ -1627,6 +1634,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();
@@ -1674,6 +1683,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();
@@ -1689,6 +1700,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();
@@ -1705,6 +1718,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();
@@ -1721,6 +1736,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();
@@ -1736,6 +1753,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();
@@ -1755,6 +1774,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();

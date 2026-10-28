@@ -139,6 +139,25 @@ describe('connectHost', () => {
     disconnect()
   })
 
+  it('keeps the reflection strength and always-on bass crossover', async () => {
+    const webview = fakeWebView()
+    vi.stubGlobal('window', { chrome: { webview: webview.bridge } })
+    const { connectHost, useCabin } = await import('./store')
+    const disconnect = connectHost(() => 0)
+    expect(useCabin.getState().reflection).toEqual({ amount: 100 })
+    expect(useCabin.getState().bass).toEqual({ cutoff: 60 })
+    webview.send({ type: 'settings', truckStrip: 'auto', reflection: { amount: 64 }, bass: { cutoff: 85 } })
+    expect(useCabin.getState().reflection).toEqual({ amount: 64 })
+    expect(useCabin.getState().bass).toEqual({ cutoff: 85 })
+    useCabin.getState().setReflection({ amount: 140 })
+    expect(useCabin.getState().reflection).toEqual({ amount: 100 })
+    expect(webview.posted.at(-1)).toEqual({ type: 'reflection', amount: 100 })
+    useCabin.getState().setBass({ cutoff: 10 })
+    expect(useCabin.getState().bass).toEqual({ cutoff: 30 })
+    expect(webview.posted.at(-1)).toEqual({ type: 'bass', cutoff: 30 })
+    disconnect()
+  })
+
   it('powers off and forgets the telemetry as the game closes, and powers on again with the next game', async () => {
     const webview = fakeWebView()
     vi.stubGlobal('window', { chrome: { webview: webview.bridge } })

@@ -53,6 +53,12 @@ pub struct SoundSettings {
     /// The amount of cabin modelling used (Settings › Sound › Cabin Character).
     #[serde(deserialize_with = "lenient")]
     pub character: crate::speakers::CabinCharacter,
+    /// The strength of the fixed-direction cabin reflections.
+    #[serde(deserialize_with = "lenient")]
+    pub reflection: crate::speakers::CabinReflection,
+    /// Always-on bass management's mono crossover.
+    #[serde(deserialize_with = "lenient")]
+    pub bass: crate::speakers::BassManagement,
 }
 
 impl SoundSettings {
@@ -479,6 +485,8 @@ mod tests {
                 custom: true,
                 reverb: crate::speakers::Reverb { enabled: true, size: 72, amount: 38 },
                 character: crate::speakers::CabinCharacter::Full,
+                reflection: crate::speakers::CabinReflection { amount: 80 },
+                bass: crate::speakers::BassManagement { cutoff: 70 },
             },
         };
         let json = to_json(&settings);
@@ -486,6 +494,9 @@ mod tests {
         assert!(json.contains("\"key\": 5"), "{json}");
         assert!(json.contains("\"mode\": \"toggle\""), "{json}");
         assert!(json.contains("\"truckStrip\": \"off\""), "{json}");
+        let saved: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(saved["sound"]["reflection"]["amount"], 80, "{json}");
+        assert_eq!(saved["sound"]["bass"]["cutoff"], 70, "{json}");
         assert_eq!(parse(&json).unwrap(), settings);
     }
 

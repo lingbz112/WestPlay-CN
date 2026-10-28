@@ -463,6 +463,10 @@ export interface Strings {
     characterEq: string
     characterIr: string
     characterFull: string
+    reflectionAmount: string
+    bassManagement: string
+    bassFooter: string
+    bassCutoff: string
     cabinReverb: string
     reverbFooter: string
     reverbEnabled: string
@@ -952,14 +956,19 @@ export const STRINGS: Record<Language, Strings> = {
       resetEqualizer: 'Reset',
       cabinCharacter: 'Cabin Character',
       characterFooter:
-        'Reference is the untouched speaker field. Cabin EQ adds car-interior tonal balance. Cabin IR adds short early reflections. Full Cabin combines the EQ, reflections and adjustable reverb. Use these to find which part of the cabin sound is missing.',
+        'Reference is the untouched speaker field. Cabin EQ adds car-interior tonal balance. Cabin IR adds short early reflections. Full Cabin combines only the EQ and reflections. Reverb remains independent on its own page.',
       characterReference: 'Reference',
       characterEq: 'Cabin EQ',
       characterIr: 'Cabin IR',
       characterFull: 'Full Cabin',
+      reflectionAmount: 'Reflection Strength',
+      bassManagement: 'Bass Management',
+      bassFooter:
+        'Always on. Below the crossover both channels become mono and bypass the directional speaker field; above it, normal stereo speaker positioning remains.',
+      bassCutoff: 'Mono Bass Crossover',
       cabinReverb: 'Cabin Reverb',
       reverbFooter:
-        'Adds the reflections of the truck interior after the speakers. Larger, longer cabs need a longer tail; the reverb keeps bass out so heavy low end does not become muddy.',
+        'Independent from Cabin Character. Adds the diffuse tail after the fixed early reflections; larger cabs need a longer tail, and bass stays out of the reverb send.',
       reverbEnabled: 'Enable Reverb',
       reverbPresets: 'Cabin Size Presets',
       compactCab: 'Compact Day Cab',
@@ -1458,14 +1467,19 @@ export const STRINGS: Record<Language, Strings> = {
       resetEqualizer: 'Sıfırla',
       cabinCharacter: 'Kabin Karakteri',
       characterFooter:
-        'Referans yalnızca hoparlör alanıdır. Kabin EQ otomobil içi ton dengesini ekler. Kabin IR kısa erken yansımaları ekler. Tam Kabin üçünü birleştirir. Eksik olan ses katmanını seçmek için bu dört ayarı kullan.',
+        'Referans yalnızca hoparlör alanıdır. Kabin EQ otomobil içi ton dengesini ekler. Kabin IR kısa erken yansımaları ekler. Tam Kabin yalnızca EQ ve yansımaları birleştirir. Yankı kendi sayfasında bağımsız kalır.',
       characterReference: 'Referans',
       characterEq: 'Kabin EQ',
       characterIr: 'Kabin IR',
       characterFull: 'Tam Kabin',
+      reflectionAmount: 'Yansıma Gücü',
+      bassManagement: 'Bas Yönetimi',
+      bassFooter:
+        'Her zaman açıktır. Crossover altında iki kanal mono olur ve yönlü hoparlör alanını atlar; üstünde normal stereo konumlandırma korunur.',
+      bassCutoff: 'Mono Bas Crossover',
       cabinReverb: 'Kabin Yankısı',
       reverbFooter:
-        'Hoparlörlerden sonra kamyon kabininin yansımalarını ekler. Daha büyük ve uzun kabinler daha uzun bir kuyruk ister; yankı bası dışarıda tutarak güçlü alt frekansların çamurlu olmasını önler.',
+        'Kabin Karakterinden bağımsızdır. Sabit erken yansımalardan sonra dağınık kuyruğu ekler; büyük kabinler daha uzun kuyruk ister ve bas yankıya girmez.',
       reverbEnabled: 'Yankıyı Etkinleştir',
       reverbPresets: 'Kabin Boyu Hazır Ayarları',
       compactCab: 'Kompakt Gündüz Kabini',

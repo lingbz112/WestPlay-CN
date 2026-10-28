@@ -306,6 +306,8 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     // The cab's shared reflections (Settings › Sound › Cabin Reverb), passed on with the cab too.
     let mut reverb = config.settings.get().sound.reverb.clamped();
     let mut character = config.settings.get().sound.character;
+    let mut reflection = config.settings.get().sound.reflection.clamped();
+    let mut bass = config.settings.get().sound.bass.clamped();
     // The music's spectrum wanted by the cab (its Equalizer open): asked of the players with the cab.
     let mut spectrum = false;
     // The page's height (`westplay_shared::page_height`): the frame's until a screen asks for another.
@@ -831,6 +833,26 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                     if settings.sound.character != chosen {
                         character = chosen;
                         settings.sound.character = chosen;
+                        config.settings.set(settings.clone());
+                        (config.on_settings)(&settings);
+                    }
+                }
+                Some(PageMessage::Reflection { amount }) => {
+                    let mut settings = config.settings.get();
+                    let reflection_setting = speakers::CabinReflection { amount }.clamped();
+                    if settings.sound.reflection != reflection_setting {
+                        reflection = reflection_setting;
+                        settings.sound.reflection = reflection_setting;
+                        config.settings.set(settings.clone());
+                        (config.on_settings)(&settings);
+                    }
+                }
+                Some(PageMessage::Bass { cutoff }) => {
+                    let mut settings = config.settings.get();
+                    let bass_setting = speakers::BassManagement { cutoff }.clamped();
+                    if settings.sound.bass != bass_setting {
+                        bass = bass_setting;
+                        settings.sound.bass = bass_setting;
                         config.settings.set(settings.clone());
                         (config.on_settings)(&settings);
                     }
@@ -1517,19 +1539,74 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 _ => speakers::in_truck(truck.id.as_str()),
             };
             if let Some(player) = &youtube {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
             }
             if let Some(player) = &apple_music {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
             }
             if let Some(player) = &qq_music {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
             }
             if let Some(player) = &youtube_music {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
             }
             if let Some(player) = &spotify {
-                let _ = player.cab(truck_speakers, head, outside, distance, equalizer, reverb, character, spectrum);
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
             }
         }
 
@@ -2015,6 +2092,8 @@ fn settings_message(settings: &settings::Settings) -> String {
         "equalizerCustom": settings.sound.custom,
         "reverb": settings.sound.reverb.clamped(),
         "character": settings.sound.character,
+        "reflection": settings.sound.reflection.clamped(),
+        "bass": settings.sound.bass.clamped(),
     })
     .to_string()
 }
@@ -2058,6 +2137,12 @@ enum PageMessage {
     /// The amount of cabin modelling every player uses.
     Character {
         character: speakers::CabinCharacter,
+    },
+    Reflection {
+        amount: i8,
+    },
+    Bass {
+        cutoff: u8,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the players measure it, and it's passed
     /// on to the page as they say it.
@@ -2280,6 +2365,14 @@ mod tests {
             parse_page_message(r#"{"type":"character","character":"impulse"}"#),
             Some(PageMessage::Character { character: crate::speakers::CabinCharacter::Impulse })
         );
+        assert_eq!(
+            parse_page_message(r#"{"type":"reflection","amount":80}"#),
+            Some(PageMessage::Reflection { amount: 80 })
+        );
+        assert_eq!(
+            parse_page_message(r#"{"type":"bass","cutoff":70}"#),
+            Some(PageMessage::Bass { cutoff: 70 })
+        );
         assert_eq!(parse_page_message(r#"{"type":"spectrum","on":true}"#), Some(PageMessage::Spectrum { on: true }));
         assert_eq!(
             parse_page_message(r#"{"type":"cursorLight","light":true}"#),
@@ -2440,6 +2533,8 @@ mod tests {
                 "equalizerCustom": false,
                 "reverb": { "enabled": true, "size": 55, "amount": 32 },
                 "character": "full",
+                "reflection": { "amount": 100 },
+                "bass": { "cutoff": 60 },
             })
         );
         settings.screen.truck_strip = crate::settings::TruckStrip::Off;

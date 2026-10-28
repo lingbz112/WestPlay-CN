@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 pub use crate::apple_music::Command;
 use crate::apple_music::{Answer, Playback, State};
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, CabinCharacter, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, BassManagement, CabinCharacter, CabinReflection, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, HiddenWebView, Stage};
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN, COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
@@ -55,6 +55,8 @@ enum Cab {
         equalizer: Equalizer,
         reverb: Reverb,
         character: CabinCharacter,
+        reflection: CabinReflection,
+        bass: BassManagement,
     },
     Spectrum {
         on: bool,
@@ -67,7 +69,7 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<(Equalizer, Reverb, CabinCharacter)>,
+    equalizer: Option<(Equalizer, Reverb, CabinCharacter, CabinReflection, BassManagement)>,
     spectrum: Option<bool>,
     messages: [Option<String>; 5],
 }
@@ -193,6 +195,8 @@ impl QqMusic {
         equalizer: Equalizer,
         reverb: Reverb,
         character: CabinCharacter,
+        reflection: CabinReflection,
+        bass: BassManagement,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -219,9 +223,10 @@ impl QqMusic {
             self.player.post_json(&message)?;
             self.tell_frame(&message);
         }
-        if told.equalizer != Some((equalizer, reverb, character)) {
-            told.equalizer = Some((equalizer, reverb, character));
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character }).unwrap_or_default();
+        if told.equalizer != Some((equalizer, reverb, character, reflection, bass)) {
+            told.equalizer = Some((equalizer, reverb, character, reflection, bass));
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character, reflection, bass })
+                .unwrap_or_default();
             told.messages[3] = Some(message.clone());
             self.player.post_json(&message)?;
             self.tell_frame(&message);

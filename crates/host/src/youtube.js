@@ -710,6 +710,8 @@
       cab.equalizer(command)
       cab.reverb?.(command.reverb)
       cab.character?.(command.character)
+      cab.reflection?.(command.reflection)
+      cab.bass?.(command.bass)
       return
     }
     if (command.action === 'spectrum') {

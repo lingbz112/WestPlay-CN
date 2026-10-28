@@ -1901,6 +1901,8 @@
     equalizer: null,
     reverb: null,
     character: null,
+    reflection: null,
+    bass: null,
     spectrum: false,
   };
   let sound = null;
@@ -1957,6 +1959,8 @@
     if (cab.equalizer !== null) sound.equalizer(cab.equalizer);
     if (cab.reverb !== null) sound.reverb(cab.reverb);
     if (cab.character !== null) sound.character(cab.character);
+    if (cab.reflection !== null) sound.reflection(cab.reflection);
+    if (cab.bass !== null) sound.bass(cab.bass);
     sound.spectrum(cab.spectrum);
   };
   const CAB = {
@@ -1979,9 +1983,13 @@
       cab.equalizer = data;
       cab.reverb = data.reverb;
       cab.character = data.character;
+      cab.reflection = data.reflection;
+      cab.bass = data.bass;
       sound?.equalizer(data);
       sound?.reverb(data.reverb);
       sound?.character(data.character);
+      sound?.reflection(data.reflection);
+      sound?.bass(data.bass);
       tellRadio(data);
     },
     spectrum(data) {

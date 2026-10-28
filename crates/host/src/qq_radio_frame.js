@@ -77,6 +77,8 @@
     equalizer: null,
     reverb: null,
     character: null,
+    reflection: null,
+    bass: null,
     spectrum: false,
   };
   let sound = null;
@@ -89,6 +91,8 @@
     if (cab.equalizer !== null) sound.equalizer(cab.equalizer);
     if (cab.reverb !== null) sound.reverb(cab.reverb);
     if (cab.character !== null) sound.character(cab.character);
+    if (cab.reflection !== null) sound.reflection(cab.reflection);
+    if (cab.bass !== null) sound.bass(cab.bass);
     sound.spectrum(cab.spectrum);
   };
   const attach = () => {
@@ -138,9 +142,13 @@
         cab.equalizer = message;
         cab.reverb = message.reverb;
         cab.character = message.character;
+        cab.reflection = message.reflection;
+        cab.bass = message.bass;
         sound?.equalizer(message);
         sound?.reverb(message.reverb);
         sound?.character(message.character);
+        sound?.reflection(message.reflection);
+        sound?.bass(message.bass);
         break;
       case "spectrum":
         cab.spectrum = Boolean(message.on);

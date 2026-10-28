@@ -3,7 +3,11 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import {
   type Equalizer,
   type CabinCharacter,
+  type BassManagement,
+  type CabinReflection,
+  DEFAULT_BASS_MANAGEMENT,
   DEFAULT_CABIN_CHARACTER,
+  DEFAULT_CABIN_REFLECTION,
   DEFAULT_REVERB,
   FLAT,
   type HostMessage,
@@ -20,6 +24,8 @@ import {
   toEqualizer,
   toReverb,
   toCabinCharacter,
+  toBassManagement,
+  toCabinReflection,
   type TruckInfo,
 } from '../../shared/host'
 import type { Maneuver, TurnKind } from '../maps/guidance'
@@ -95,6 +101,8 @@ interface CabinState {
   reverb: Reverb
   /** The amount of cabin modelling used (Settings › Sound › Cabin Character). */
   cabinCharacter: CabinCharacter
+  reflection: CabinReflection
+  bass: BassManagement
   power: PowerState
   /**
    * The screen is handed back to the truck (its stock screen shows, with WestPlay's button to come back),
@@ -118,6 +126,8 @@ interface CabinState {
   setReverb(change: Partial<Reverb>): void
   /** Chooses how much of the cabin model every player uses. */
   setCabinCharacter(character: CabinCharacter): void
+  setReflection(change: Partial<CabinReflection>): void
+  setBass(change: Partial<BassManagement>): void
   setOemMode(mode: OemMode): void
   /** The player's choice, in Settings: applied, and kept with WestPlay's settings. */
   chooseOemMode(mode: OemMode): void
@@ -147,6 +157,8 @@ export const useCabin = create<CabinState>()(
       equalizerCustom: false,
       reverb: DEFAULT_REVERB,
       cabinCharacter: DEFAULT_CABIN_CHARACTER,
+      reflection: DEFAULT_CABIN_REFLECTION,
+      bass: DEFAULT_BASS_MANAGEMENT,
       power: INITIAL_POWER,
       navigate: (action) => set((state) => ({ navigation: navigate(state.navigation, action) })),
       setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
@@ -180,6 +192,19 @@ export const useCabin = create<CabinState>()(
       setCabinCharacter: (character) => {
         set({ cabinCharacter: character })
         if (isInHost()) postToHost({ type: 'character', character })
+      },
+      setReflection: (change) => {
+        const reflection = toCabinReflection({
+          ...useCabin.getState().reflection,
+          ...change,
+        })
+        set({ reflection })
+        if (isInHost()) postToHost({ type: 'reflection', ...reflection })
+      },
+      setBass: (change) => {
+        const bass = toBassManagement({ ...useCabin.getState().bass, ...change })
+        set({ bass })
+        if (isInHost()) postToHost({ type: 'bass', ...bass })
       },
       setOemMode: (oemMode) => set({ oemMode }),
       chooseOemMode: (oemMode) => {
@@ -493,6 +518,8 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
           equalizerCustom: message.equalizerCustom === true,
           reverb: toReverb(message.reverb),
           cabinCharacter: toCabinCharacter(message.character),
+          reflection: toCabinReflection(message.reflection),
+          bass: toBassManagement(message.bass),
         })
         setIcons({
           iconSet: message.iconSet ?? null,

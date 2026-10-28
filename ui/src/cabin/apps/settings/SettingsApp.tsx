@@ -22,6 +22,7 @@ import { type SettingsPage, useSettings } from './settings'
 import './settings.css'
 import {
   cabClock,
+  BASS_CUTOFF,
   CABIN_CHARACTERS,
   type CabinCharacter,
   EQUALIZER_BANDS,
@@ -73,6 +74,8 @@ function PageContent({ page }: { page: SettingsPage }) {
       return <ReverbPage />
     case 'character':
       return <CharacterPage />
+    case 'bass':
+      return <BassPage />
     case 'textSize':
       return <TextSizePage />
   }
@@ -363,6 +366,7 @@ function SoundPage() {
   const custom = useCabin((state) => state.equalizerCustom)
   const reverb = useCabin((state) => state.reverb)
   const character = useCabin((state) => state.cabinCharacter)
+  const bass = useCabin((state) => state.bass)
   const characterNames: Record<CabinCharacter, string> = {
     reference: text.settings.characterReference,
     equalized: text.settings.characterEq,
@@ -383,6 +387,11 @@ function SoundPage() {
           onOpen={() => open('character')}
         />
         <NavRow
+          label={text.settings.bassManagement}
+          value={`${bass.cutoff} Hz`}
+          onOpen={() => open('bass')}
+        />
+        <NavRow
           label={text.settings.cabinReverb}
           value={reverb.enabled ? `${reverb.amount}%` : text.settings.off}
           onOpen={() => open('reverb')}
@@ -397,6 +406,8 @@ function CharacterPage() {
   const text = useText()
   const chosen = useCabin((state) => state.cabinCharacter)
   const choose = useCabin((state) => state.setCabinCharacter)
+  const reflection = useCabin((state) => state.reflection)
+  const setReflection = useCabin((state) => state.setReflection)
   const names: Record<CabinCharacter, string> = {
     reference: text.settings.characterReference,
     equalized: text.settings.characterEq,
@@ -414,6 +425,35 @@ function CharacterPage() {
             onPick={() => choose(character)}
           />
         ))}
+      </Group>
+      <Group>
+        <SettingSlider
+          label={text.settings.reflectionAmount}
+          value={reflection.amount}
+          change={(amount) => setReflection({ amount })}
+        />
+      </Group>
+    </Page>
+  )
+}
+
+/** Always-on bass management. There is no switch: only where the mono bass crossover sits. */
+function BassPage() {
+  const text = useText()
+  const bass = useCabin((state) => state.bass)
+  const set = useCabin((state) => state.setBass)
+  return (
+    <Page title={text.settings.bassManagement}>
+      <Group footer={text.settings.bassFooter}>
+        <SettingSlider
+          label={text.settings.bassCutoff}
+          value={bass.cutoff}
+          min={BASS_CUTOFF.min}
+          max={BASS_CUTOFF.max}
+          step={BASS_CUTOFF.step}
+          suffix=" Hz"
+          change={(cutoff) => set({ cutoff })}
+        />
       </Group>
     </Page>
   )
@@ -469,23 +509,34 @@ function ReverbPage() {
 function SettingSlider({
   label,
   value,
+  min = 0,
+  max = 100,
+  step = 1,
+  suffix = '%',
   change,
 }: {
   label: string
   value: number
+  min?: number
+  max?: number
+  step?: number
+  suffix?: string
   change(value: number): void
 }) {
   return (
     <label className="settings-slider-row">
       <span className="settings-slider-text">
         <span className="settings-label">{label}</span>
-        <span className="settings-slider-value">{value}%</span>
+        <span className="settings-slider-value">
+          {value}
+          {suffix}
+        </span>
       </span>
       <input
         type="range"
-        min={0}
-        max={100}
-        step={1}
+        min={min}
+        max={max}
+        step={step}
         value={value}
         data-own-drag
         onChange={(event) => change(Number(event.currentTarget.value))}

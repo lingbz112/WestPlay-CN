@@ -1132,9 +1132,54 @@ pub enum CabinCharacter {
     Equalized,
     /// A short measured-style early-reflection response, without the long reverb.
     Impulse,
-    /// The cabin curve, early reflections and the adjustable diffuse reverb together.
+    /// The cabin curve and early reflections together; diffuse reverb remains independently controlled.
     #[default]
     Full,
+}
+
+/// Strength of the cabin's discrete early reflections (`0`: none, `100`: the modelled level).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CabinReflection {
+    pub amount: i8,
+}
+
+impl CabinReflection {
+    pub const MOST: i8 = 100;
+
+    pub fn clamped(self) -> Self {
+        Self { amount: self.amount.clamp(0, Self::MOST) }
+    }
+}
+
+impl Default for CabinReflection {
+    fn default() -> Self {
+        Self { amount: 100 }
+    }
+}
+
+/// Always-on bass management: the crossover below which the cabin sums both channels to mono before the
+/// directional speaker field. Real sub-bass carries little useful direction; keeping it out of HRTF avoids
+/// the whole low end moving with a turn of the head.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BassManagement {
+    pub cutoff: u8,
+}
+
+impl BassManagement {
+    pub const LOW: u8 = 30;
+    pub const HIGH: u8 = 150;
+
+    pub fn clamped(self) -> Self {
+        Self { cutoff: self.cutoff.clamp(Self::LOW, Self::HIGH) }
+    }
+}
+
+impl Default for BassManagement {
+    fn default() -> Self {
+        Self { cutoff: 60 }
+    }
 }
 
 /// The music's spectrum as a player's page measures it (cab_sound.js: after the tone, before the speakers), for
@@ -1291,6 +1336,15 @@ mod tests {
         let wild = Reverb { enabled: true, size: -20, amount: 120 };
         assert_eq!(wild.clamped(), Reverb { enabled: true, size: 0, amount: 100 });
         assert_eq!(Reverb::default().clamped(), Reverb::default());
+    }
+
+    #[test]
+    fn cabin_reflection_and_bass_management_keep_their_ranges() {
+        assert_eq!(CabinReflection { amount: 120 }.clamped(), CabinReflection { amount: 100 });
+        assert_eq!(CabinReflection { amount: -3 }.clamped(), CabinReflection { amount: 0 });
+        assert_eq!(BassManagement { cutoff: 10 }.clamped(), BassManagement { cutoff: 30 });
+        assert_eq!(BassManagement { cutoff: 200 }.clamped(), BassManagement { cutoff: 150 });
+        assert_eq!(BassManagement::default(), BassManagement { cutoff: 60 });
     }
 
     #[test]

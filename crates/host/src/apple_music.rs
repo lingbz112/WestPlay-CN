@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, CabinCharacter, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, BassManagement, CabinCharacter, CabinReflection, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, Stage};
 
 /// Apple Music's web player.
@@ -123,6 +123,8 @@ enum Cab {
         equalizer: Equalizer,
         reverb: Reverb,
         character: CabinCharacter,
+        reflection: CabinReflection,
+        bass: BassManagement,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays.
     Spectrum {
@@ -137,7 +139,7 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<(Equalizer, Reverb, CabinCharacter)>,
+    equalizer: Option<(Equalizer, Reverb, CabinCharacter, CabinReflection, BassManagement)>,
     spectrum: Option<bool>,
     messages: [Option<String>; 5],
 }
@@ -616,6 +618,8 @@ impl AppleMusic {
         equalizer: Equalizer,
         reverb: Reverb,
         character: CabinCharacter,
+        reflection: CabinReflection,
+        bass: BassManagement,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -640,9 +644,10 @@ impl AppleMusic {
             told.messages[2] = Some(message.clone());
             self.view.post_json(&message)?;
         }
-        if told.equalizer != Some((equalizer, reverb, character)) {
-            told.equalizer = Some((equalizer, reverb, character));
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character }).unwrap_or_default();
+        if told.equalizer != Some((equalizer, reverb, character, reflection, bass)) {
+            told.equalizer = Some((equalizer, reverb, character, reflection, bass));
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character, reflection, bass })
+                .unwrap_or_default();
             told.messages[3] = Some(message.clone());
             self.view.post_json(&message)?;
         }
@@ -1022,6 +1027,8 @@ mod tests {
                 Equalizer::default(),
                 Reverb::default(),
                 CabinCharacter::Full,
+                CabinReflection::default(),
+                BassManagement::default(),
                 false,
             )
             .unwrap();

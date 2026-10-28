@@ -1113,6 +1113,8 @@
       cab?.equalizer(data)
       cab?.reverb(data.reverb)
       cab?.character(data.character)
+      cab?.reflection(data.reflection)
+      cab?.bass(data.bass)
     },
     spectrum: (data) => cab?.spectrum(data.on),
   }

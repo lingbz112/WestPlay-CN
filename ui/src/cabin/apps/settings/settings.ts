@@ -13,6 +13,7 @@ export type SettingsPage =
   | 'equalizer'
   | 'reverb'
   | 'character'
+  | 'bass'
 
 /** The page a page is within, where its back button goes (the list, but for the pages within a page). */
 export const PARENT: Partial<Record<SettingsPage, SettingsPage>> = {
@@ -20,6 +21,7 @@ export const PARENT: Partial<Record<SettingsPage, SettingsPage>> = {
   equalizer: 'sound',
   reverb: 'sound',
   character: 'sound',
+  bass: 'sound',
 }
 
 interface SettingsState {

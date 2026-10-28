@@ -112,6 +112,10 @@ export type HostMessage =
       reverb?: Reverb
       /** How much cabin modelling every player uses (Settings › Sound › Cabin Character). */
       character?: CabinCharacter
+      /** The strength of the fixed-direction cabin reflections. */
+      reflection?: CabinReflection
+      /** The always-on bass management's mono crossover. */
+      bass?: BassManagement
     }
   /** The player's own wallpapers and icon sets (shared/customize.ts), their files at `CABIN_FILES`. */
   | { type: 'customize'; wallpapers: CustomWallpaper[]; iconSets: IconSet[] }
@@ -314,6 +318,39 @@ export function toCabinCharacter(value: unknown): CabinCharacter {
   return CABIN_CHARACTERS.includes(value as CabinCharacter) ? (value as CabinCharacter) : DEFAULT_CABIN_CHARACTER
 }
 
+export interface CabinReflection {
+  amount: number
+}
+
+export const DEFAULT_CABIN_REFLECTION: CabinReflection = { amount: 100 }
+
+export function toCabinReflection(value: unknown): CabinReflection {
+  const amount = (value as Partial<CabinReflection> | null | undefined)?.amount
+  return {
+    amount:
+      typeof amount === 'number' && Number.isFinite(amount)
+        ? Math.max(0, Math.min(100, Math.round(amount)))
+        : DEFAULT_CABIN_REFLECTION.amount,
+  }
+}
+
+export interface BassManagement {
+  cutoff: number
+}
+
+export const BASS_CUTOFF = { min: 30, max: 150, step: 5 } as const
+export const DEFAULT_BASS_MANAGEMENT: BassManagement = { cutoff: 60 }
+
+export function toBassManagement(value: unknown): BassManagement {
+  const cutoff = (value as Partial<BassManagement> | null | undefined)?.cutoff
+  return {
+    cutoff:
+      typeof cutoff === 'number' && Number.isFinite(cutoff)
+        ? Math.max(BASS_CUTOFF.min, Math.min(BASS_CUTOFF.max, Math.round(cutoff)))
+        : DEFAULT_BASS_MANAGEMENT.cutoff,
+  }
+}
+
 export type PageMessage =
   | { type: 'ready' }
   /** A startup stage reached (the boot screens shown), for the host's startup log. */
@@ -332,6 +369,10 @@ export type PageMessage =
   | ({ type: 'reverb' } & Reverb)
   /** The amount of cabin modelling chosen in Settings › Sound. */
   | { type: 'character'; character: CabinCharacter }
+  /** The cabin reflection strength chosen in Settings › Sound. */
+  | ({ type: 'reflection' } & CabinReflection)
+  /** The bass management crossover chosen in Settings › Sound. */
+  | ({ type: 'bass' } & BassManagement)
   /** The music's spectrum wanted (Settings › Equalizer open) or not: the host answers `spectrum` as it plays. */
   | { type: 'spectrum'; on: boolean }
   /** Whether what's under the cursor is light: the host draws it dark there. */

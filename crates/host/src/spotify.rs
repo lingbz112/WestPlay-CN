@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, Equalizer, Head, Speaker};
+use crate::speakers::{self, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, Stage};
 
 /// Spotify's web player.
@@ -422,6 +422,7 @@ enum Cab {
     Equalizer {
         #[serde(flatten)]
         equalizer: Equalizer,
+        reverb: Reverb,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays.
     Spectrum {
@@ -436,7 +437,7 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<Equalizer>,
+    equalizer: Option<(Equalizer, Reverb)>,
     spectrum: Option<bool>,
     messages: [Option<String>; 5],
 }
@@ -516,6 +517,7 @@ impl Spotify {
         outside: bool,
         distance: f32,
         equalizer: Equalizer,
+        reverb: Reverb,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -540,9 +542,9 @@ impl Spotify {
             told.messages[2] = Some(message.clone());
             self.view.post_json(&message)?;
         }
-        if told.equalizer != Some(equalizer) {
-            told.equalizer = Some(equalizer);
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer }).unwrap_or_default();
+        if told.equalizer != Some((equalizer, reverb)) {
+            told.equalizer = Some((equalizer, reverb));
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb }).unwrap_or_default();
             told.messages[3] = Some(message.clone());
             self.view.post_json(&message)?;
         }
@@ -967,7 +969,9 @@ mod tests {
         };
         pump(8.0, &mut playing);
         let head = Head { x: -0.47, y: 1.33, z: 0.32, heading: 0.0, pitch: 0.0 };
-        spotify.cab(speakers::in_truck("scania.s_2016"), head, false, 0.0, Equalizer::default(), false).unwrap();
+        spotify
+            .cab(speakers::in_truck("scania.s_2016"), head, false, 0.0, Equalizer::default(), Reverb::default(), false)
+            .unwrap();
         // An album, from a search's first song.
         let query = std::env::var("WESTPLAY_SPOTIFY_QUERY").unwrap_or_else(|_| "tarkan".into());
         spotify.command(&Command::Ask { id: 1, question: Question::Search { query } }).unwrap();
@@ -1076,7 +1080,9 @@ mod tests {
         };
         pump_until(8.0, &|| false);
         let head = Head { x: -0.47, y: 1.33, z: 0.32, heading: 0.0, pitch: 0.0 };
-        spotify.cab(speakers::in_truck("scania.s_2016"), head, false, 0.0, Equalizer::default(), false).unwrap();
+        spotify
+            .cab(speakers::in_truck("scania.s_2016"), head, false, 0.0, Equalizer::default(), Reverb::default(), false)
+            .unwrap();
         let query = std::env::var("WESTPLAY_SPOTIFY_QUERY").unwrap_or_else(|_| "tarkan".into());
         spotify.command(&Command::Ask { id: 1, question: Question::Search { query } }).unwrap();
         let mut song = None;

@@ -619,3 +619,32 @@
   transform: translate(-50%, -50%) scale(1.08);
   transition: transform 150ms var(--motion-ease);
 }
+
+/* Cabin reverb: the size and level of the reflections, each a full-width slider on a truck-sized target. */
+.settings-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 24px 18px;
+  color: var(--apple-label);
+}
+
+.settings-slider-text {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  font-size: calc(24px * var(--text-scale, 1));
+}
+
+.settings-slider-value {
+  color: var(--apple-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-slider-row input[type='range'] {
+  width: 100%;
+  height: 42px;
+  margin: 0;
+  accent-color: var(--apple-blue);
+  cursor: pointer;
+}

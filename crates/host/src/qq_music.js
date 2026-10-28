@@ -1899,6 +1899,7 @@
     head: null,
     outside: null,
     equalizer: null,
+    reverb: null,
     spectrum: false,
   };
   let sound = null;
@@ -1953,6 +1954,7 @@
     if (cab.outside !== null)
       sound.outside(cab.outside.on, cab.outside.distance);
     if (cab.equalizer !== null) sound.equalizer(cab.equalizer);
+    if (cab.reverb !== null) sound.reverb(cab.reverb);
     sound.spectrum(cab.spectrum);
   };
   const CAB = {
@@ -1973,7 +1975,9 @@
     },
     equalizer(data) {
       cab.equalizer = data;
+      cab.reverb = data.reverb;
       sound?.equalizer(data);
+      sound?.reverb(data.reverb);
       tellRadio(data);
     },
     spectrum(data) {

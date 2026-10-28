@@ -60,6 +60,8 @@ function PageContent({ page }: { page: SettingsPage }) {
       return <SoundPage />
     case 'equalizer':
       return <EqualizerPage />
+    case 'reverb':
+      return <ReverbPage />
     case 'textSize':
       return <TextSizePage />
   }
@@ -348,16 +350,97 @@ function SoundPage() {
   const text = useText()
   const open = useSettings((state) => state.open)
   const custom = useCabin((state) => state.equalizerCustom)
+  const reverb = useCabin((state) => state.reverb)
   return (
     <Page title={text.settings.sound}>
-      <Group>
+      <Group footer={text.settings.soundFooter}>
         <NavRow
           label={text.settings.equalizer}
           value={custom ? text.settings.custom : text.settings.recommended}
           onOpen={() => open('equalizer')}
         />
+        <NavRow
+          label={text.settings.cabinReverb}
+          value={reverb.enabled ? `${reverb.amount}%` : text.settings.off}
+          onOpen={() => open('reverb')}
+        />
       </Group>
     </Page>
+  )
+}
+
+/** The cab's shared acoustic space: first reflections and the diffuse tail every player's sound makes in the
+ * same truck interior. Presets keep it quick; the sliders let a large sleeper or a compact day cab be tuned. */
+function ReverbPage() {
+  const text = useText()
+  const reverb = useCabin((state) => state.reverb)
+  const set = useCabin((state) => state.setReverb)
+  const presets = [
+    { id: 'compact', label: text.settings.compactCab, size: 25, amount: 30 },
+    { id: 'standard', label: text.settings.standardCab, size: 55, amount: 32 },
+    { id: 'large', label: text.settings.largeCab, size: 85, amount: 40 },
+  ] as const
+  const chosen = presets.find((preset) => preset.size === reverb.size && preset.amount === reverb.amount)
+  return (
+    <Page title={text.settings.cabinReverb}>
+      <Group footer={text.settings.reverbFooter}>
+        <SwitchRow
+          label={text.settings.reverbEnabled}
+          on={reverb.enabled}
+          onToggle={(enabled) => set({ enabled })}
+        />
+      </Group>
+      <Group header={text.settings.reverbPresets}>
+        {presets.map((preset) => (
+          <CheckRow
+            key={preset.id}
+            label={preset.label}
+            on={chosen?.id === preset.id}
+            onPick={() => set({ enabled: true, size: preset.size, amount: preset.amount })}
+          />
+        ))}
+      </Group>
+      <Group>
+        <SettingSlider
+          label={text.settings.reverbSize}
+          value={reverb.size}
+          change={(size) => set({ enabled: true, size })}
+        />
+        <SettingSlider
+          label={text.settings.reverbAmount}
+          value={reverb.amount}
+          change={(amount) => set({ enabled: true, amount })}
+        />
+      </Group>
+    </Page>
+  )
+}
+
+function SettingSlider({
+  label,
+  value,
+  change,
+}: {
+  label: string
+  value: number
+  change(value: number): void
+}) {
+  return (
+    <label className="settings-slider-row">
+      <span className="settings-slider-text">
+        <span className="settings-label">{label}</span>
+        <span className="settings-slider-value">{value}%</span>
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={value}
+        data-own-drag
+        onChange={(event) => change(Number(event.currentTarget.value))}
+      />
+    </label>
   )
 }
 

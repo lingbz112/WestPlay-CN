@@ -47,6 +47,9 @@ pub struct SoundSettings {
     /// Custom chosen: the curve plays (otherwise flat).
     #[serde(deserialize_with = "lenient")]
     pub custom: bool,
+    /// The cab's shared reflections (Settings › Sound › Cabin Reverb).
+    #[serde(deserialize_with = "lenient")]
+    pub reverb: crate::speakers::Reverb,
 }
 
 impl SoundSettings {
@@ -471,6 +474,7 @@ mod tests {
             sound: SoundSettings {
                 equalizer: crate::speakers::Equalizer { bass: -3, mid: 1, treble: 2 },
                 custom: true,
+                reverb: crate::speakers::Reverb { enabled: true, size: 72, amount: 38 },
             },
         };
         let json = to_json(&settings);

@@ -446,9 +446,9 @@ export interface Strings {
     dashboard: string
     widgets: string
     showAlbumArt: string
-    /** Sound, and in it the Equalizer: the speakers as tuned (Recommended) or the player's own tone (Custom), what
-     * it does, its three bands under the graph, and the curve set back. */
+    /** Sound, and in it the Equalizer and the cab's shared reverb. */
     sound: string
+    soundFooter: string
     equalizer: string
     recommended: string
     custom: string
@@ -457,6 +457,16 @@ export interface Strings {
     mid: string
     high: string
     resetEqualizer: string
+    cabinReverb: string
+    reverbFooter: string
+    reverbEnabled: string
+    reverbPresets: string
+    compactCab: string
+    standardCab: string
+    largeCab: string
+    reverbSize: string
+    reverbAmount: string
+    off: string
     back: string
   }
   /** Apps. */
@@ -923,6 +933,8 @@ export const STRINGS: Record<Language, Strings> = {
       widgets: 'Widgets',
       showAlbumArt: 'Show Album Art',
       sound: 'Sound',
+      soundFooter:
+        'Every player uses the same truck stereo, speaker positions and cabin acoustics, whichever music service you choose.',
       equalizer: 'Equalizer',
       recommended: 'Recommended',
       custom: 'Custom',
@@ -932,6 +944,17 @@ export const STRINGS: Record<Language, Strings> = {
       mid: 'Mid',
       high: 'High',
       resetEqualizer: 'Reset',
+      cabinReverb: 'Cabin Reverb',
+      reverbFooter:
+        'Adds the reflections of the truck interior after the speakers. Larger, longer cabs need a longer tail; the reverb keeps bass out so heavy low end does not become muddy.',
+      reverbEnabled: 'Enable Reverb',
+      reverbPresets: 'Cabin Size Presets',
+      compactCab: 'Compact Day Cab',
+      standardCab: 'Sleeper Cab',
+      largeCab: 'Large / Long Cab',
+      reverbSize: 'Space Size',
+      reverbAmount: 'Reverb Level',
+      off: 'Off',
       back: 'Back',
     },
     apps: {
@@ -1409,6 +1432,8 @@ export const STRINGS: Record<Language, Strings> = {
       widgets: 'Widget’lar',
       showAlbumArt: 'Albüm Kapağını Göster',
       sound: 'Ses',
+      soundFooter:
+        'Hangi müzik servisini seçersen seç, her oynatıcı aynı kamyon stereo sistemini, hoparlör konumlarını ve kabin akustiğini kullanır.',
       equalizer: 'Ekolayzır',
       recommended: 'Önerilen',
       custom: 'Özel',
@@ -1418,6 +1443,17 @@ export const STRINGS: Record<Language, Strings> = {
       mid: 'Orta',
       high: 'Yüksek',
       resetEqualizer: 'Sıfırla',
+      cabinReverb: 'Kabin Yankısı',
+      reverbFooter:
+        'Hoparlörlerden sonra kamyon kabininin yansımalarını ekler. Daha büyük ve uzun kabinler daha uzun bir kuyruk ister; yankı bası dışarıda tutarak güçlü alt frekansların çamurlu olmasını önler.',
+      reverbEnabled: 'Yankıyı Etkinleştir',
+      reverbPresets: 'Kabin Boyu Hazır Ayarları',
+      compactCab: 'Kompakt Gündüz Kabini',
+      standardCab: 'Yataklı Kabin',
+      largeCab: 'Büyük / Uzun Kabin',
+      reverbSize: 'Alan Boyu',
+      reverbAmount: 'Yankı Seviyesi',
+      off: 'Kapalı',
       back: 'Geri',
     },
     apps: {

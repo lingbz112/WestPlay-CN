@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, Equalizer, Head, Speaker};
+use crate::speakers::{self, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, PageSize, Stage};
 use crate::youtube::{is_token, is_video_id, is_youtube_image, within};
 
@@ -785,6 +785,7 @@ enum Cab {
     Equalizer {
         #[serde(flatten)]
         equalizer: Equalizer,
+        reverb: Reverb,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays.
     Spectrum {
@@ -799,7 +800,7 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<Equalizer>,
+    equalizer: Option<(Equalizer, Reverb)>,
     spectrum: Option<bool>,
     messages: [Option<String>; 5],
 }
@@ -879,6 +880,7 @@ impl YouTubeMusic {
         outside: bool,
         distance: f32,
         equalizer: Equalizer,
+        reverb: Reverb,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -903,9 +905,9 @@ impl YouTubeMusic {
             told.messages[2] = Some(message.clone());
             self.view.post_json(&message)?;
         }
-        if told.equalizer != Some(equalizer) {
-            told.equalizer = Some(equalizer);
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer }).unwrap_or_default();
+        if told.equalizer != Some((equalizer, reverb)) {
+            told.equalizer = Some((equalizer, reverb));
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb }).unwrap_or_default();
             told.messages[3] = Some(message.clone());
             self.view.post_json(&message)?;
         }

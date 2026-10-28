@@ -106,6 +106,25 @@ describe('connectHost', () => {
     disconnect()
   })
 
+  it('keeps the cabin reverb from the host and sends Settings changes to it', async () => {
+    const webview = fakeWebView()
+    vi.stubGlobal('window', { chrome: { webview: webview.bridge } })
+    const { connectHost, useCabin } = await import('./store')
+    const disconnect = connectHost(() => 0)
+    expect(useCabin.getState().reverb).toEqual({ enabled: true, size: 55, amount: 32 })
+
+    webview.send({
+      type: 'settings',
+      truckStrip: 'auto',
+      reverb: { enabled: false, size: 82, amount: 44 },
+    })
+    expect(useCabin.getState().reverb).toEqual({ enabled: false, size: 82, amount: 44 })
+    useCabin.getState().setReverb({ enabled: true, size: 130, amount: -4 })
+    expect(useCabin.getState().reverb).toEqual({ enabled: true, size: 100, amount: 0 })
+    expect(webview.posted.at(-1)).toEqual({ type: 'reverb', enabled: true, size: 100, amount: 0 })
+    disconnect()
+  })
+
   it('powers off and forgets the telemetry as the game closes, and powers on again with the next game', async () => {
     const webview = fakeWebView()
     vi.stubGlobal('window', { chrome: { webview: webview.bridge } })

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
   type Equalizer,
+  DEFAULT_REVERB,
   FLAT,
   type HostMessage,
   type GameWeather,
@@ -9,11 +10,13 @@ import {
   type JobInfo,
   IS_DEMO,
   type KeybindAction,
+  type Reverb,
   isInHost,
   postToHost,
   subscribeHostMessages,
   type Telemetry,
   toEqualizer,
+  toReverb,
   type TruckInfo,
 } from '../../shared/host'
 import type { Maneuver, TurnKind } from '../maps/guidance'
@@ -85,6 +88,8 @@ interface CabinState {
    * (Recommended, flat): kept with WestPlay's settings, the host sends them. */
   equalizer: Equalizer
   equalizerCustom: boolean
+  /** The cab's shared reverb (Settings › Sound › Cabin Reverb), kept with WestPlay's settings. */
+  reverb: Reverb
   power: PowerState
   /**
    * The screen is handed back to the truck (its stock screen shows, with WestPlay's button to come back),
@@ -104,6 +109,8 @@ interface CabinState {
   chooseEqualizer(custom: boolean): void
   /** The curve flat again. */
   resetEqualizer(): void
+  /** Changes the cab's reverb; every field not given stays as it is. */
+  setReverb(change: Partial<Reverb>): void
   setOemMode(mode: OemMode): void
   /** The player's choice, in Settings: applied, and kept with WestPlay's settings. */
   chooseOemMode(mode: OemMode): void
@@ -131,6 +138,7 @@ export const useCabin = create<CabinState>()(
       oemMode: 'auto',
       equalizer: FLAT,
       equalizerCustom: false,
+      reverb: DEFAULT_REVERB,
       power: INITIAL_POWER,
       navigate: (action) => set((state) => ({ navigation: navigate(state.navigation, action) })),
       setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
@@ -155,6 +163,11 @@ export const useCabin = create<CabinState>()(
       resetEqualizer: () => {
         set({ equalizer: FLAT })
         if (isInHost()) postToHost({ type: 'equalizer', custom: useCabin.getState().equalizerCustom, ...FLAT })
+      },
+      setReverb: (change) => {
+        const reverb = toReverb({ ...useCabin.getState().reverb, ...change })
+        set({ reverb })
+        if (isInHost()) postToHost({ type: 'reverb', ...reverb })
       },
       setOemMode: (oemMode) => set({ oemMode }),
       chooseOemMode: (oemMode) => {
@@ -466,6 +479,7 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
         useCabin.setState({
           equalizer: toEqualizer(message.equalizer),
           equalizerCustom: message.equalizerCustom === true,
+          reverb: toReverb(message.reverb),
         })
         setIcons({
           iconSet: message.iconSet ?? null,

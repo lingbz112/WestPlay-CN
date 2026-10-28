@@ -108,6 +108,8 @@ export type HostMessage =
       /** The player's own tone curve (Settings › Equalizer), and whether it plays (Custom) or not (Recommended). */
       equalizer?: Equalizer
       equalizerCustom?: boolean
+      /** The cab's shared reverb (Settings › Sound › Cabin Reverb). */
+      reverb?: Reverb
     }
   /** The player's own wallpapers and icon sets (shared/customize.ts), their files at `CABIN_FILES`. */
   | { type: 'customize'; wallpapers: CustomWallpaper[]; iconSets: IconSet[] }
@@ -276,6 +278,30 @@ export function toEqualizer(value: unknown): Equalizer {
   return { bass: band(told.bass), mid: band(told.mid), treble: band(told.treble) }
 }
 
+/** The cab's shared reverb (`speakers::Reverb`): size 0 (compact) to 100 (long sleeper), and how audible the
+ * reflections are. */
+export interface Reverb {
+  enabled: boolean
+  size: number
+  amount: number
+}
+
+export const REVERB_MOST = 100
+export const DEFAULT_REVERB: Reverb = { enabled: true, size: 55, amount: 32 }
+
+export function toReverb(value: unknown): Reverb {
+  const told = (value ?? {}) as Partial<Record<keyof Reverb, unknown>>
+  const level = (number: unknown, fallback: number) =>
+    typeof number === 'number' && Number.isFinite(number)
+      ? Math.max(0, Math.min(REVERB_MOST, Math.round(number)))
+      : fallback
+  return {
+    enabled: told.enabled !== false,
+    size: level(told.size, DEFAULT_REVERB.size),
+    amount: level(told.amount, DEFAULT_REVERB.amount),
+  }
+}
+
 export type PageMessage =
   | { type: 'ready' }
   /** A startup stage reached (the boot screens shown), for the host's startup log. */
@@ -290,6 +316,8 @@ export type PageMessage =
   /** The players' tone, set in Settings › Equalizer: the player's curve, and whether it plays (Custom) or the
    * speakers as tuned (Recommended); kept with WestPlay's settings and played by every player. */
   | ({ type: 'equalizer'; custom: boolean } & Equalizer)
+  /** The cab's shared reverb, kept with WestPlay's settings and played by every player. */
+  | ({ type: 'reverb' } & Reverb)
   /** The music's spectrum wanted (Settings › Equalizer open) or not: the host answers `spectrum` as it plays. */
   | { type: 'spectrum'; on: boolean }
   /** Whether what's under the cursor is light: the host draws it dark there. */

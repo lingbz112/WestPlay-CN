@@ -1169,7 +1169,10 @@
     speakers: (data) => cab?.speakers(data.speakers),
     head: (data) => cab?.head(data),
     outside: (data) => cab?.outside(data.on, data.distance),
-    equalizer: (data) => cab?.equalizer(data),
+    equalizer: (data) => {
+      cab?.equalizer(data)
+      cab?.reverb(data.reverb)
+    },
     spectrum: (data) => cab?.spectrum(data.on),
   }
 

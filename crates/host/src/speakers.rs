@@ -1096,6 +1096,32 @@ impl Equalizer {
     }
 }
 
+/// The cabin's shared reverb: the reflections every player's sound makes in the truck's cab. `size` is the
+/// room's scale from a compact day cab (0) to a long sleeper (100); `amount` is how loud the reflections are.
+/// The sound field keeps the dry sound placed at each speaker and adds this as the cab's diffuse return.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Reverb {
+    pub enabled: bool,
+    pub size: i8,
+    pub amount: i8,
+}
+
+impl Reverb {
+    pub const MOST: i8 = 100;
+
+    pub fn clamped(self) -> Self {
+        let clamp = |value: i8| value.clamp(0, Self::MOST);
+        Self { enabled: self.enabled, size: clamp(self.size), amount: clamp(self.amount) }
+    }
+}
+
+impl Default for Reverb {
+    fn default() -> Self {
+        Self { enabled: true, size: 55, amount: 32 }
+    }
+}
+
 /// The music's spectrum as a player's page measures it (cab_sound.js: after the tone, before the speakers), for
 /// the cab's Equalizer to draw behind its curve while it's open: each bar's loudness (0 to 255), low to high.
 /// Read from the page's `{"spectrum":[…]}`: whole numbers 0 to 255 only, and no more than [`SPECTRUM_MOST`].
@@ -1243,6 +1269,13 @@ mod tests {
         let wild = Equalizer { bass: -40, mid: 3, treble: 100 };
         assert_eq!(wild.clamped(), Equalizer { bass: -6, mid: 3, treble: 6 });
         assert_eq!(Equalizer::default().clamped(), Equalizer::default());
+    }
+
+    #[test]
+    fn cabin_reverb_uses_the_whole_room_and_level_range() {
+        let wild = Reverb { enabled: true, size: -20, amount: 120 };
+        assert_eq!(wild.clamped(), Reverb { enabled: true, size: 0, amount: 100 });
+        assert_eq!(Reverb::default().clamped(), Reverb::default());
     }
 
     #[test]

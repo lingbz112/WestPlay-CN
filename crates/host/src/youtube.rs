@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, Equalizer, Head, Speaker};
+use crate::speakers::{self, Equalizer, Head, Reverb, Speaker};
 use crate::webview::{self, OffscreenWebView, PageSize, Stage};
 
 /// What the cabin page asks of YouTube's player, or of YouTube (`youtube` in ui/src/shared/host.ts).
@@ -90,6 +90,7 @@ pub enum Command {
     Equalizer {
         #[serde(flatten)]
         equalizer: Equalizer,
+        reverb: Reverb,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays. The host's
     /// own.
@@ -211,7 +212,9 @@ impl Command {
             Command::AudioTrack { id } => is_audio_track_id(id),
             Command::Head { head } => head.is_sound(),
             Command::Outside { distance, .. } => distance.is_finite() && (0.0..10_000.0).contains(distance),
-            Command::Equalizer { equalizer } => equalizer.clamped() == *equalizer,
+            Command::Equalizer { equalizer, reverb } => {
+                equalizer.clamped() == *equalizer && reverb.clamped() == *reverb
+            }
             Command::Suggest { query, .. } => !query.trim().is_empty() && text(query),
             _ => true,
         }
@@ -681,7 +684,13 @@ impl Account {
 
 /// What the page was told last of the cab: the truck (whose speakers it has), the head, whether the camera is
 /// outside and how far, and the tone.
-type Told = (Option<Option<Vec<Speaker>>>, Option<Head>, Option<(bool, f32)>, Option<Equalizer>, Option<bool>);
+type Told = (
+    Option<Option<Vec<Speaker>>>,
+    Option<Head>,
+    Option<(bool, f32)>,
+    Option<(Equalizer, Reverb)>,
+    Option<bool>,
+);
 
 pub struct YouTube {
     view: OffscreenWebView,
@@ -772,6 +781,7 @@ impl YouTube {
         outside: bool,
         distance: f32,
         equalizer: Equalizer,
+        reverb: Reverb,
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut cab = self.cab.borrow_mut();
@@ -790,9 +800,9 @@ impl YouTube {
             cab.2 = Some(camera);
             self.pass(&Command::Outside { on: camera.0, distance: camera.1 })?;
         }
-        if cab.3 != Some(equalizer) {
-            cab.3 = Some(equalizer);
-            self.pass(&Command::Equalizer { equalizer })?;
+        if cab.3 != Some((equalizer, reverb)) {
+            cab.3 = Some((equalizer, reverb));
+            self.pass(&Command::Equalizer { equalizer, reverb })?;
         }
         if cab.4 != Some(spectrum) {
             cab.4 = Some(spectrum);
@@ -1607,7 +1617,15 @@ mod tests {
         // The S's driver, as the game has it.
         let head = Head { x: -0.683, y: 1.41, z: 0.384, heading: 0.0, pitch: 0.0 };
         youtube
-            .cab(speakers::in_truck("vehicle.scania.s_2016"), head, false, 0.0, Equalizer::default(), false)
+            .cab(
+                speakers::in_truck("vehicle.scania.s_2016"),
+                head,
+                false,
+                0.0,
+                Equalizer::default(),
+                Reverb::default(),
+                false,
+            )
             .unwrap();
         youtube.command(&Command::Volume { percent: 100 }).unwrap();
         youtube.command(&Command::Load { video: VIDEO.into(), start: Some(40.0) }).unwrap();
@@ -1651,6 +1669,7 @@ mod tests {
                 false,
                 0.0,
                 Equalizer::default(),
+                Reverb::default(),
                 false,
             )
             .unwrap();
@@ -1664,6 +1683,7 @@ mod tests {
                 false,
                 0.0,
                 Equalizer::default(),
+                Reverb::default(),
                 false,
             )
             .unwrap();
@@ -1678,6 +1698,7 @@ mod tests {
                 true,
                 0.0,
                 Equalizer::default(),
+                Reverb::default(),
                 false,
             )
             .unwrap();
@@ -1692,6 +1713,7 @@ mod tests {
                 true,
                 20.0,
                 Equalizer::default(),
+                Reverb::default(),
                 false,
             )
             .unwrap();
@@ -1705,6 +1727,7 @@ mod tests {
                 false,
                 0.0,
                 Equalizer::default(),
+                Reverb::default(),
                 false,
             )
             .unwrap();
@@ -1715,7 +1738,17 @@ mod tests {
         let quiet = listen(4).unwrap();
         assert!(quiet[0] + quiet[1] < (left[0] + left[1]) * 0.4, "at 10 %: {quiet:?} after {left:?}");
         // A truck whose speakers aren't known: the sound as it is (no speakers' meter).
-        youtube.cab(speakers::in_truck("vehicle.man.tgx_2020"), head, false, 0.0, Equalizer::default(), false).unwrap();
+        youtube
+            .cab(
+                speakers::in_truck("vehicle.man.tgx_2020"),
+                head,
+                false,
+                0.0,
+                Equalizer::default(),
+                Reverb::default(),
+                false,
+            )
+            .unwrap();
         listen(1);
         assert_eq!(listen(3), None);
         youtube.close(&stage);

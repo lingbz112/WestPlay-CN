@@ -107,6 +107,16 @@ pub const QQ_MUSIC: Site = Site {
     not_yet: None,
     page_says: Some(include_str!("qq_music_sign_in.js")),
 };
+
+/// NetEase Cloud Music's sign-in: its own log-in page on music.163.com, which says when the account is signed
+/// in (`netease_music_sign_in.js`).
+pub const NETEASE_MUSIC: Site = Site {
+    sign_in: "https://music.163.com/login?targetUrl=%2Fdiscover",
+    title: "Sign in to NetEase Cloud Music - WestPlay",
+    home: "https://music.163.com/",
+    not_yet: None,
+    page_says: Some(include_str!("netease_music_sign_in.js")),
+};
 const CLASS: windows::core::PCWSTR = w!("WestPlaySignIn");
 const SIZE: (i32, i32) = (520, 760);
 /// Windows' message for the mouse leaving a window that asked to be told (its value, from WinUser.h).

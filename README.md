@@ -13,11 +13,11 @@
 
 This repository is a personal maintenance fork of [enes-less/WestPlay](https://github.com/enes-less/WestPlay), based on version `2.1.4`. It focuses on Chinese music-service integrations, Chinese localization and cabin audio enhancements.
 
-Packages, release notes and known issues are published only in this repository's [Releases](https://github.com/lingbz112/WestPlay/releases). This README is limited to version information and essential notices.
+Packages, release notes and known issues are published only in this repository's [Releases](https://github.com/lingbz112/WestPlay-CN/releases). This README is limited to version information and essential notices.
 
 ## Differences from upstream
 
-- Integrates Chinese online music services, currently including QQ Music, using the existing in-vehicle music-app interaction model.
+- Integrates Chinese online music services, currently including QQ Music and NetEase Cloud Music, using the existing in-vehicle music-app interaction model.
 - Adds Chinese localization and adjustments required by Chinese music services.
 - Enhances cabin audio with cabin EQ/IR, independent reverb, fixed-direction early reflections and directionless bass management.
 - Adds global play/pause, previous-track and next-track keyboard shortcuts.
@@ -29,9 +29,9 @@ Additional Chinese music platforms will continue to be merged into the same bran
 - Upstream version: `WestPlay 2.1.4`
 - Upstream commit: `92c3d55`
 - Long-lived fork branch: `main`
-- Fork release tag format: `v<upstream-version>-cn.<revision>`
+- Fork release tag format: `v<upstream-version>-<revision>`
 
-For example, the first and second fork releases based on the same upstream version use `v2.1.4-cn.1` and `v2.1.4-cn.2`. After the upstream version advances to 2.1.5, fork revisions restart at `v2.1.5-cn.1`.
+For example, the first and second fork releases based on the same upstream version use `v2.1.4-1` and `v2.1.4-2`. After the upstream version advances to 2.1.5, fork revisions restart at `v2.1.5-1`.
 
 ## License and legal information
 

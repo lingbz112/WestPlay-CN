@@ -7,6 +7,7 @@ describe('the apps this release has', () => {
       'maps',
       'music',
       'qqMusic',
+      'neteaseMusic',
       'spotify',
       'youtube',
       'youtubeMusic',

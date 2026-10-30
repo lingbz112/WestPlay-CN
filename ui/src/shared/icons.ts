@@ -10,6 +10,7 @@ export type AppIconRole =
   | 'maps'
   | 'music'
   | 'qqMusic'
+  | 'neteaseMusic'
   | 'spotify'
   | 'podcasts'
   | 'messages'
@@ -24,6 +25,7 @@ const FILES: Record<AppIconRole, string> = {
   maps: 'maps',
   music: 'music',
   qqMusic: 'qq-music',
+  neteaseMusic: 'netease-music',
   spotify: 'spotify',
   podcasts: 'podcasts',
   messages: 'messages',
@@ -37,5 +39,6 @@ const FILES: Record<AppIconRole, string> = {
 /** WestPlay's own icon for `role`, for a light or a dark screen. */
 export function appIcon(role: AppIconRole, look: 'light' | 'dark' = 'light'): string {
   if (role === 'qqMusic') return `/icons/westplay/qq-music-official.${look}.webp`
+  if (role === 'neteaseMusic') return `/icons/westplay/netease-music-official.${look}.png`
   return `/icons/westplay/${FILES[role]}.${look}.svg`
 }

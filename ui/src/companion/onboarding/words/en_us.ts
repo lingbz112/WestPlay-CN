@@ -176,6 +176,12 @@ export const words: Words = {
     finishInWindow: 'Finish signing in in the QQ Music window',
     signingIn: { title: 'Signing in to QQ Music', text: 'Continue in the QQ Music window' },
   },
+  neteaseMusic: {
+    title: 'Sign in to NetEase Cloud Music',
+    sub: 'Optional. Sign in to play NetEase Cloud Music on the truck’s screen, with your own playlists and favourites. You sign in to NetEase Cloud Music in its own window, and WestPlay never sees your account details.',
+    finishInWindow: 'Finish signing in in the NetEase Cloud Music window',
+    signingIn: { title: 'Signing in to NetEase Cloud Music', text: 'Continue in the NetEase Cloud Music window' },
+  },
   launch: {
     title: 'You’re all set',
     done: 'Done',

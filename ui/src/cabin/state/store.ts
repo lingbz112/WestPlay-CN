@@ -40,6 +40,11 @@ import {
   useQqMusic,
 } from '../apps/qqMusic/qqMusic'
 import {
+  receiveAnswer as receiveNeteaseMusicAnswer,
+  receivePlayback as receiveNeteaseMusicPlayback,
+  useNeteaseMusic,
+} from '../apps/neteaseMusic/neteaseMusic'
+import {
   receiveAnswer as receiveSpotifyAnswer,
   receivePlayback,
   receiveState as receiveSpotifyState,
@@ -615,6 +620,20 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
         break
       case 'qqMusicPlayback':
         receiveQqMusicPlayback(message.playback)
+        break
+      case 'neteaseMusic':
+        useNeteaseMusic.setState({
+          signedIn: message.signedIn,
+          playing: message.playing,
+          signingIn: message.signingIn,
+          avatar: message.avatar,
+        })
+        break
+      case 'neteaseMusicAnswer':
+        receiveNeteaseMusicAnswer(message)
+        break
+      case 'neteaseMusicPlayback':
+        receiveNeteaseMusicPlayback(message.playback)
         break
       case 'youtubeMusic':
         receiveYouTubeMusicState(message)

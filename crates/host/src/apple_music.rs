@@ -228,6 +228,8 @@ pub enum Shelf {
     Artists,
     Albums,
     Songs,
+    /// NetEase Cloud Music's subscribed podcasts (the copied app's Library).
+    Podcasts,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -301,8 +303,14 @@ pub struct Track {
     pub duration: f64,
     #[serde(default)]
     pub explicit: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub number: Option<u32>,
+    /// A song only its service's own paid account plays (NetEase's VIP tag).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vip: bool,
+    /// A song with no source at all (NetEase's 无音源 tag).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_source: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub favorite: Option<bool>,
 }
@@ -461,6 +469,9 @@ pub struct Playback {
     /// The page's player's volume, 0 to 1.
     #[serde(default)]
     pub volume: Option<f64>,
+    /// The song didn't play (no rights, no source): the app pauses it at once, rather than waiting.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub failed: bool,
     #[serde(default)]
     pub next: Vec<Track>,
 }

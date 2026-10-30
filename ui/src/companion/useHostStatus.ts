@@ -35,6 +35,9 @@ export interface HostStatus {
   /** The same of QQ Music: signed in or not (`null`: not known yet), and its sign-in window open. */
   qqMusicSignedIn: boolean | null
   qqMusicSigningIn: boolean
+  /** The same of NetEase Cloud Music: signed in or not (`null`: not known yet), and its sign-in window open. */
+  neteaseMusicSignedIn: boolean | null
+  neteaseMusicSigningIn: boolean
   /** The map of the profile played (mirrors `westplay_host::maps::MapStatus`). */
   map: MapStatus
   /** The map the cab shows: its folder in WestPlay's maps, and when it was built (seconds since 1970;
@@ -164,6 +167,21 @@ export function qqMusicSignOut(): Promise<void> {
 /** Runs QQ Music's web pages (hidden), so the status says whether it's signed in. */
 export function qqMusicCheck(): Promise<void> {
   return call('qq_music_check')
+}
+
+/** Opens NetEase Cloud Music's sign-in page in a window on the desktop. */
+export function neteaseMusicSignIn(): Promise<void> {
+  return call('netease_music_sign_in')
+}
+
+/** Signs NetEase Cloud Music out. */
+export function neteaseMusicSignOut(): Promise<void> {
+  return call('netease_music_sign_out')
+}
+
+/** Runs NetEase Cloud Music's page (hidden), so the status says whether it's signed in. */
+export function neteaseMusicCheck(): Promise<void> {
+  return call('netease_music_check')
 }
 
 /** Opens or closes WestPlay on the truck's screen (the status then reports it, once the cabin has). */

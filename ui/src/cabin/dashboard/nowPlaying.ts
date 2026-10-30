@@ -1,6 +1,6 @@
-/** What the Dashboard's Now Playing can show: YouTube's video, the Spotify app, Apple Music, QQ Music, or
- * YouTube Music. In this order when two play at once. */
-export const NOW_PLAYING_ORDER = ['video', 'spotify', 'appleMusic', 'qqMusic', 'youtubeMusic'] as const
+/** What the Dashboard's Now Playing can show: YouTube's video, the Spotify app, Apple Music, QQ Music,
+ * NetEase Cloud Music, or YouTube Music. In this order when two play at once. */
+export const NOW_PLAYING_ORDER = ['video', 'spotify', 'appleMusic', 'qqMusic', 'neteaseMusic', 'youtubeMusic'] as const
 
 export type NowPlayingSource = (typeof NOW_PLAYING_ORDER)[number]
 

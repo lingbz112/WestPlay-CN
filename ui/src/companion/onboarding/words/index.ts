@@ -180,6 +180,13 @@ export interface Words {
     finishInWindow: string
     signingIn: Note
   }
+  /** NetEase Cloud Music's sign-in step, as Spotify's. Languages not translated yet use English. */
+  neteaseMusic?: {
+    title: string
+    sub: string
+    finishInWindow: string
+    signingIn: Note
+  }
   launch: {
     title: string
     done: string
@@ -262,6 +269,18 @@ export function qqMusicWords(words: Words): NonNullable<Words['qqMusic']> {
       sub: 'Optional. Sign in to play QQ Music on the truck’s screen, with your own playlists and library. You sign in to QQ Music in its own window, and WestPlay never sees your account details.',
       finishInWindow: 'Finish signing in in the QQ Music window',
       signingIn: { title: 'Signing in to QQ Music', text: 'Continue in the QQ Music window' },
+    }
+  )
+}
+
+/** NetEase Cloud Music's words: its own where translated, English elsewhere. */
+export function neteaseMusicWords(words: Words): NonNullable<Words['neteaseMusic']> {
+  return (
+    words.neteaseMusic ?? {
+      title: 'Sign in to NetEase Cloud Music',
+      sub: 'Optional. Sign in to play NetEase Cloud Music on the truck’s screen, with your own playlists and favourites. You sign in to NetEase Cloud Music in its own window, and WestPlay never sees your account details.',
+      finishInWindow: 'Finish signing in in the NetEase Cloud Music window',
+      signingIn: { title: 'Signing in to NetEase Cloud Music', text: 'Continue in the NetEase Cloud Music window' },
     }
   )
 }

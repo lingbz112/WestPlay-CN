@@ -21,6 +21,9 @@ import {
   spotifyCheck,
   spotifySignIn,
   spotifySignOut,
+  neteaseMusicCheck,
+  neteaseMusicSignIn,
+  neteaseMusicSignOut,
   youtubeCheck,
   youtubeSignIn,
   youtubeSignOut,
@@ -68,7 +71,7 @@ import {
   useTour,
 } from '../room/screen'
 import { useDemo } from '../room/useDemo'
-import { count, languageOf, list, percent, qqMusicWords, type Words, wordsFor } from './words'
+import { count, languageOf, list, neteaseMusicWords, percent, qqMusicWords, type Words, wordsFor } from './words'
 
 const STEPS = [
   'welcome',
@@ -81,6 +84,7 @@ const STEPS = [
   'spotify',
   'appleMusic',
   'qqMusic',
+  'neteaseMusic',
   'tutorial',
 ] as const
 type StepId = (typeof STEPS)[number]
@@ -96,6 +100,7 @@ const POSES: Record<StepId, Pose> = {
   spotify: 'side',
   appleMusic: 'side',
   qqMusic: 'side',
+  neteaseMusic: 'side',
   tutorial: 'final',
 }
 
@@ -287,6 +292,7 @@ export function Onboarding({
             {step === 'spotify' && <ServiceSignIn service="spotify" status={status} next={next} back={back} />}
             {step === 'appleMusic' && <ServiceSignIn service="appleMusic" status={status} next={next} back={back} />}
             {step === 'qqMusic' && <ServiceSignIn service="qqMusic" status={status} next={next} back={back} />}
+            {step === 'neteaseMusic' && <ServiceSignIn service="neteaseMusic" status={status} next={next} back={back} />}
             {step === 'tutorial' && <TutorialIntro code={code} finish={finish} back={back} />}
           </ScreenContext.Provider>
         </RoomText.Provider>
@@ -868,6 +874,17 @@ const SERVICE_STEPS = {
     signIn: qqMusicSignIn,
     signOut: qqMusicSignOut,
     words: qqMusicWords,
+  },
+  neteaseMusic: {
+    name: '网易云音乐',
+    app: 'neteaseMusic',
+    glow: GLOW.neteaseMusic,
+    signedIn: (status: HostStatus | null) => status?.neteaseMusicSignedIn,
+    signingIn: (status: HostStatus | null) => status?.neteaseMusicSigningIn ?? false,
+    check: neteaseMusicCheck,
+    signIn: neteaseMusicSignIn,
+    signOut: neteaseMusicSignOut,
+    words: neteaseMusicWords,
   },
 } as const
 

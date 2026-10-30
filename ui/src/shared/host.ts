@@ -232,6 +232,19 @@ export type HostMessage =
   | ({ type: 'qqMusicAnswer'; id: number; failed?: boolean } & Partial<AppleMusicAnswers>)
   /** What QQ Music plays; `null`: nothing. */
   | { type: 'qqMusicPlayback'; playback: AppleMusicPlayback | null }
+  /** NetEase Cloud Music's web player: whether it's signed in and playing (`null`: not running), and its
+   * sign-in window on the PC's desktop. */
+  | {
+      type: 'neteaseMusic'
+      signedIn: boolean | null
+      playing: boolean | null
+      signingIn: boolean
+      avatar: string | null
+    }
+  /** NetEase Cloud Music's answer to the copied Music app's question `id` (`failed`: it didn't answer). */
+  | ({ type: 'neteaseMusicAnswer'; id: number; failed?: boolean } & Partial<AppleMusicAnswers>)
+  /** What NetEase Cloud Music plays; `null`: nothing. */
+  | { type: 'neteaseMusicPlayback'; playback: AppleMusicPlayback | null }
   /** YouTube Music's web player: whether it's signed in and playing (`null`: not running), whether its sign-in
    * window is open on the PC, and the account's picture (Google's). YouTube's sign-in: they share it. */
   | {
@@ -400,6 +413,8 @@ export type PageMessage =
   | { type: 'appleMusic'; command: AppleMusicCommand }
   /** A command for QQ Music's web player (`westplay_host::qq_music::Command`). */
   | { type: 'qqMusic'; command: AppleMusicCommand }
+  /** A command for NetEase Cloud Music's web player (`westplay_host::netease_music::Command`). */
+  | { type: 'neteaseMusic'; command: AppleMusicCommand }
   /** A command for YouTube Music's web player (`westplay_host::youtube_music::Command`). */
   | { type: 'youtubeMusic'; command: YouTubeMusicCommand }
 
@@ -591,7 +606,7 @@ export type AppleMusicCommand =
   | { action: 'add'; id: string }
 
 export type AppleMusicRepeat = 'off' | 'all' | 'one'
-export type AppleMusicShelf = 'recent' | 'playlists' | 'artists' | 'albums' | 'songs'
+export type AppleMusicShelf = 'recent' | 'playlists' | 'artists' | 'albums' | 'songs' | 'podcasts'
 
 /** A card or row: what it is, its name, who it's by (an album's artist, a playlist's curator, a station's
  * tagline), Apple's editors' note, its cover (and a wide picture, Apple's editors' own) and the cover's
@@ -629,6 +644,10 @@ export interface AppleMusicTrack {
   explicit: boolean
   /** Its number on its album. */
   number: number | null
+  /** Only its service's own paid account plays it (NetEase's VIP tag). */
+  vip?: boolean
+  /** No source at all (NetEase's 无音源 tag). */
+  noSource?: boolean
   /** A favourite (Apple Music says, signed in, for the song playing). */
   favorite?: boolean
 }
@@ -733,6 +752,8 @@ export interface AppleMusicPlayback {
   repeat: AppleMusicRepeat
   /** The page's player's volume, 0 to 1. */
   volume: number | null
+  /** The song didn't play (no rights, no source): the app pauses it at once. */
+  failed?: boolean
   next: AppleMusicTrack[]
 }
 

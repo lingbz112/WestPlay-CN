@@ -24,6 +24,8 @@ mod play_log;
 mod player;
 mod pointer;
 mod qq_music;
+mod netease_music;
+mod netease_proxy;
 pub mod route;
 mod route_change;
 pub mod settings;
@@ -114,6 +116,10 @@ pub struct Status {
     /// The same of QQ Music: signed in or not (`None`: not known, QQ Music not run yet), its sign-in window open.
     pub qq_music_signed_in: Option<bool>,
     pub qq_music_signing_in: bool,
+    /// The same of NetEase Cloud Music: signed in or not (`None`: not known, it's not run yet), its sign-in
+    /// window open.
+    pub netease_music_signed_in: Option<bool>,
+    pub netease_music_signing_in: bool,
     /// The map of the profile played: ready, being built, waiting for the game to close...
     pub map: maps::MapStatus,
     /// The map the cab shows: its folder in WestPlay's maps, and when it was built (the companion's
@@ -133,6 +139,7 @@ pub struct AccountRequests {
     pub spotify: AccountRequest,
     pub apple_music: AccountRequest,
     pub qq_music: AccountRequest,
+    pub netease_music: AccountRequest,
 }
 
 /// One service's request, the latest not carried out yet.
@@ -389,6 +396,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let mut spotify_log = play_log::PlayLog::new("spotify");
     let mut apple_music_log = play_log::PlayLog::new("apple music");
     let mut qq_music_log = play_log::PlayLog::new("qq music");
+    let mut netease_music_log = play_log::PlayLog::new("netease music");
     let mut youtube_music_log = play_log::PlayLog::new("youtube music");
     // Spotify's web player, while the page uses it, and what it last said (sent again when the page reloads):
     // signed in or not, and what plays.
@@ -408,6 +416,11 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let mut qq_music: Option<qq_music::QqMusic> = None;
     let mut qq_music_state: Option<apple_music::State> = None;
     let (mut qq_music_window_open, mut qq_music_confirming) = (false, false);
+    // NetEase Cloud Music's page, the copied Music app's engine.
+    let mut netease_music: Option<netease_music::NeteaseMusic> = None;
+    let mut netease_music_state: Option<apple_music::State> = None;
+    let (mut netease_music_window_open, mut netease_music_confirming) = (false, false);
+    let mut netease_music_playback: Option<String> = None;
     // YouTube Music's web player, the same way (on the cabin page's profile, sharing YouTube's sign-in).
     let mut youtube_music: Option<youtube_music::YouTubeMusic> = None;
     let mut youtube_music_state: Option<youtube_music::State> = None;
@@ -513,6 +526,15 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 AccountAction::SignIn => qq_music::Command::SignIn,
                 AccountAction::SignOut => qq_music::Command::SignOut,
                 AccountAction::Check => qq_music::Command::Start,
+            });
+        }
+        if let Some(action) = config.accounts.netease_music.take()
+            && let Some(player) = start_netease_music(&mut netease_music, &stage, &config)
+        {
+            let _ = player.command(&match action {
+                AccountAction::SignIn => netease_music::Command::SignIn,
+                AccountAction::SignOut => netease_music::Command::SignOut,
+                AccountAction::Check => netease_music::Command::Start,
             });
         }
 
@@ -797,6 +819,14 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                             let _ = webview.post_json(playback);
                         }
                     }
+                    if netease_music.is_some() {
+                        let signing_in = netease_music_window_open || netease_music_confirming;
+                        let message = netease_music::state_message(netease_music_state.as_ref(), signing_in);
+                        let _ = webview.post_json(&message);
+                        if let Some(playback) = &netease_music_playback {
+                            let _ = webview.post_json(playback);
+                        }
+                    }
                     if youtube_music.is_some() {
                         let signing_in = youtube_music_window_open || youtube_music_confirming;
                         let message = youtube_music::state_message(youtube_music_state.as_ref(), signing_in);
@@ -928,6 +958,13 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                     if qq_music.is_none() && matches!(command, qq_music::Command::Pause) {
                         // Nothing to pause: QQ Music isn't running.
                     } else if let Some(player) = start_qq_music(&mut qq_music, &stage, &config) {
+                        let _ = player.command(&command);
+                    }
+                }
+                Some(PageMessage::NeteaseMusic { command }) => {
+                    if netease_music.is_none() && matches!(command, netease_music::Command::Pause) {
+                        // Nothing to pause: NetEase Cloud Music isn't running.
+                    } else if let Some(player) = start_netease_music(&mut netease_music, &stage, &config) {
                         let _ = player.command(&command);
                     }
                 }
@@ -1456,6 +1493,84 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
             }
         }
 
+        // What NetEase Cloud Music's page says, and its sign-in window, for the page; a failed WebView
+        // closes it.
+        if let Some(player) = &netease_music {
+            if player.failed() || players_closing {
+                if players_closing {
+                    log!("[netease music] closed with the game");
+                } else {
+                    log!("[netease music] its browser failed: closed, the page opens it again");
+                }
+                if let Some(line) = netease_music_log.heard(None) {
+                    log!("{line}");
+                }
+                if let Some(failed) = netease_music.take() {
+                    failed.close(&stage);
+                }
+                netease_music_state = None;
+                netease_music_playback = None;
+                (netease_music_window_open, netease_music_confirming) = (false, false);
+                status.netease_music_signed_in = None;
+                status.netease_music_signing_in = false;
+                (config.on_status)(&status);
+                let _ = webview.post_json(&netease_music::state_message(None, false));
+                let _ = webview.post_json(&netease_music::playback_message(None));
+            } else {
+                let mut state_changed = false;
+                for report in player.take_reports() {
+                    match report {
+                        netease_music::Report::Spectrum(bars) => {
+                            let _ = webview.post_json(&speakers::spectrum_message(&bars));
+                        }
+                        netease_music::Report::State(state) => {
+                            if status.netease_music_signed_in != Some(state.signed_in) {
+                                status.netease_music_signed_in = Some(state.signed_in);
+                                (config.on_status)(&status);
+                            }
+                            netease_music_state = Some(state);
+                            state_changed = true;
+                        }
+                        netease_music::Report::SignInWindow(open) => {
+                            netease_music_window_open = open;
+                            state_changed = true;
+                        }
+                        // The cab shows it signing in until the page here says it's signed in.
+                        netease_music::Report::Confirming(confirming) => {
+                            netease_music_confirming = confirming;
+                            state_changed = true;
+                        }
+                        netease_music::Report::Answer(answer) => {
+                            let _ = webview.post_json(&netease_music::answer_message(&answer));
+                        }
+                        netease_music::Report::Playback(playback) => {
+                            let heard = playback.as_deref().map(|playback| play_log::Heard {
+                                doing: play_log::doing(playback.loading, playback.playing),
+                                track: playback.track.as_ref().map(|track| track.id.as_str()),
+                                position: playback.position,
+                            });
+                            if let Some(line) = netease_music_log.heard(heard) {
+                                log!("{line}");
+                            }
+                            let message = netease_music::playback_message(playback.as_deref());
+                            let _ = webview.post_json(&message);
+                            netease_music_playback = Some(message);
+                        }
+                        netease_music::Report::Log(line) => log!("[netease music] {line}"),
+                    }
+                }
+                if state_changed {
+                    let signing_in = netease_music_window_open || netease_music_confirming;
+                    if status.netease_music_signing_in != signing_in {
+                        status.netease_music_signing_in = signing_in;
+                        (config.on_status)(&status);
+                    }
+                    let message = netease_music::state_message(netease_music_state.as_ref(), signing_in);
+                    let _ = webview.post_json(&message);
+                }
+            }
+        }
+
         // What YouTube Music's page says, and its sign-in window, for the page; its WebView failing closes it.
         if let Some(player) = &youtube_music {
             if player.failed() || players_closing {
@@ -1611,6 +1726,20 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 );
             }
             if let Some(player) = &qq_music {
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
+            }
+            if let Some(player) = &netease_music {
                 let _ = player.cab(
                     truck_speakers,
                     head,
@@ -2117,6 +2246,26 @@ fn start_qq_music<'a>(
     qq_music.as_ref()
 }
 
+/// NetEase Cloud Music's page, started as the app first shows it (on a WebView2 profile of its own), or
+/// `None` if it couldn't start.
+fn start_netease_music<'a>(
+    netease_music: &'a mut Option<netease_music::NeteaseMusic>,
+    stage: &Stage,
+    config: &Config,
+) -> Option<&'a netease_music::NeteaseMusic> {
+    if netease_music.is_none() {
+        let user_data = config.data_dir.join("webview2-netease-music");
+        match netease_music::NeteaseMusic::start(stage, config.width, config.height, &user_data) {
+            Ok(started) => {
+                log!("[netease music] opened");
+                *netease_music = Some(started)
+            }
+            Err(e) => startup::mark(&format!("host: NetEase Cloud Music couldn't start: {e}")),
+        }
+    }
+    netease_music.as_ref()
+}
+
 /// YouTube Music's web player, started as the page first shows it (on the cabin page's profile, as YouTube's:
 /// they share the sign-in), or `None` if it couldn't start.
 fn start_youtube_music<'a>(
@@ -2268,6 +2417,8 @@ enum PageMessage {
     AppleMusic { command: apple_music::Command },
     /// A command for QQ Music's web player (`qqMusic`): its sign-in, a question, its controls.
     QqMusic { command: qq_music::Command },
+    /// A command for NetEase Cloud Music's web player (`neteaseMusic`): its sign-in, a question, its controls.
+    NeteaseMusic { command: netease_music::Command },
     /// A command for YouTube Music's web player (`youtubeMusic`): its sign-in, a question, its controls.
     YoutubeMusic { command: youtube_music::Command },
     /// The text field selected on the page, a number that changes with every selection (0: none), for the

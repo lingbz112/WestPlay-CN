@@ -108,6 +108,7 @@ const LIBRARY_LOOKS: Record<AppleMusicShelf, LibraryLook> = {
   albums: { view: 'grid', sort: null, filter: 'all' },
   artists: { view: 'list', sort: null, filter: 'all' },
   songs: { view: 'list', sort: null, filter: 'all' },
+  podcasts: { view: 'grid', sort: null, filter: 'all' },
 }
 
 /** Why the sign-in prompt shows: to play in full, to keep something in the Library, to favourite. */

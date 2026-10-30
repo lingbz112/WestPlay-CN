@@ -6,6 +6,7 @@ import { useLaunchStyle, whenTransitionEnds } from '../state/launch'
 import { useLanguage, useText } from '../state/text'
 import { isCopied, noteOpened, openedBefore, saveCopy, savedCopy } from './launchCopies'
 import { MusicApp } from './music/MusicApp'
+import { NeteaseMusicApp } from './neteaseMusic/NeteaseMusicApp'
 import { QqMusicApp } from './qqMusic/QqMusicApp'
 import { SettingsApp } from './settings/SettingsApp'
 import { SpotifyApp } from './spotify/SpotifyApp'
@@ -80,6 +81,8 @@ function AppContent({ app }: { app: AppId }) {
       return <MusicApp />
     case 'qqMusic':
       return <QqMusicApp />
+    case 'neteaseMusic':
+      return <NeteaseMusicApp />
     case 'youtube':
       return <YouTubeApp />
     case 'spotify':

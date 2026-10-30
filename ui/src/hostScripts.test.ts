@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import appleMusic from '../../crates/host/src/apple_music.js?raw'
 import appleMusicSignIn from '../../crates/host/src/apple_music_sign_in.js?raw'
 import cabSound from '../../crates/host/src/cab_sound.js?raw'
+import neteaseMusic from '../../crates/host/src/netease_music.js?raw'
+import neteaseMusicSignIn from '../../crates/host/src/netease_music_sign_in.js?raw'
 import spotify from '../../crates/host/src/spotify.js?raw'
 import youtube from '../../crates/host/src/youtube.js?raw'
 import youtubeMusic from '../../crates/host/src/youtube_music.js?raw'
@@ -17,6 +19,8 @@ const AS_RUN: Record<string, string[]> = {
   'YouTube Music': [cabSound, youtubeMusic],
   Spotify: [cabSound, spotify],
   "Apple Music's sign-in": [appleMusicSignIn],
+  'NetEase Cloud Music': [cabSound, neteaseMusic],
+  "NetEase Cloud Music's sign-in": [neteaseMusicSignIn],
 }
 
 describe("the players' page scripts", () => {

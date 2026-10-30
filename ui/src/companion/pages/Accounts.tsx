@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Service, SignedIn } from '../accounts'
-import { qqMusicWords, type Note, type Words } from '../onboarding/words'
+import { neteaseMusicWords, qqMusicWords, type Note, type Words } from '../onboarding/words'
 import { Button, Checking, Group, Panel, Row } from '../room/parts'
 import { banner, useSignOut, useWords } from '../room/room'
 import { GLOW, useScreenAt } from '../room/screen'
@@ -9,6 +9,8 @@ import {
   type HostStatus,
   appleMusicSignIn,
   appleMusicSignOut,
+  neteaseMusicSignIn,
+  neteaseMusicSignOut,
   qqMusicSignIn,
   qqMusicSignOut,
   spotifySignIn,
@@ -68,9 +70,18 @@ const SERVICES: Record<
     signingIn: (status) => status?.qqMusicSigningIn ?? false,
     words: qqMusicWords,
   },
+  neteaseMusic: {
+    name: '网易云音乐',
+    app: 'neteaseMusic',
+    glow: GLOW.neteaseMusic,
+    signIn: neteaseMusicSignIn,
+    signOut: neteaseMusicSignOut,
+    signingIn: (status) => status?.neteaseMusicSigningIn ?? false,
+    words: neteaseMusicWords,
+  },
 }
 
-const ORDER: Service[] = ['youtube', 'spotify', 'appleMusic', 'qqMusic']
+const ORDER: Service[] = ['youtube', 'spotify', 'appleMusic', 'qqMusic', 'neteaseMusic']
 
 /**
  * The services WestPlay plays from, each signed in (in its own window, on the desktop) or not. WestPlay only

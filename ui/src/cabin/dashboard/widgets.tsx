@@ -23,6 +23,12 @@ import {
   useQqMusic,
   useQqMusicSource,
 } from '../apps/qqMusic/qqMusic'
+import {
+  playOrPause as playOrPauseNeteaseMusic,
+  skip as skipNeteaseMusic,
+  useNeteaseMusic,
+  useNeteaseMusicSource,
+} from '../apps/neteaseMusic/neteaseMusic'
 import type { MediaAction, MediaSource } from '../../shared/media'
 import { useLook } from '../state/hooks'
 import { go, useCabin } from '../state/store'
@@ -43,13 +49,14 @@ import { cabClock } from '../../shared/host'
  */
 export function NowPlayingWidget() {
   const shown = useCabin((state) => state.dashboardWidgets.nowPlaying)
-  const { showing, spotify, appleMusic, qqMusic, youtubeMusic } = useNowPlaying()
+  const { showing, spotify, appleMusic, qqMusic, neteaseMusic, youtubeMusic } = useNowPlaying()
   return (
     <div className={`widget-slot${shown ? ' open' : ''}`}>
       {shown && showing === 'video' && <VideoWidget />}
       {shown && showing === 'spotify' && spotify && <SpotifyWidget spotify={spotify} />}
       {shown && showing === 'appleMusic' && appleMusic && <AppleMusicWidget appleMusic={appleMusic} />}
       {shown && showing === 'qqMusic' && qqMusic && <QqMusicWidget qqMusic={qqMusic} />}
+      {shown && showing === 'neteaseMusic' && neteaseMusic && <NeteaseMusicWidget neteaseMusic={neteaseMusic} />}
       {shown && showing === 'youtubeMusic' && youtubeMusic && <YouTubeMusicWidget youtubeMusic={youtubeMusic} />}
       {shown && showing === null && <MusicWidget source={null} artwork={null} onControl={() => {}} />}
     </div>
@@ -70,6 +77,25 @@ function QqMusicWidget({ qqMusic }: { qqMusic: NonNullable<ReturnType<typeof use
         if (action === 'playPause') playOrPauseQqMusic()
         else if (action === 'next') skipQqMusic(1)
         else if (action === 'previous') skipQqMusic(-1)
+      }}
+    />
+  )
+}
+
+/** NetEase Cloud Music's current song and queue, opening the copied Music app on Now Playing. */
+function NeteaseMusicWidget({ neteaseMusic }: { neteaseMusic: NonNullable<ReturnType<typeof useNeteaseMusicSource>> }) {
+  return (
+    <MusicWidget
+      source={neteaseMusic.source}
+      artwork={neteaseMusic.artwork}
+      onOpen={() => {
+        useNeteaseMusic.setState({ nowPlaying: true })
+        go({ type: 'openApp', app: 'neteaseMusic' })
+      }}
+      onControl={(action) => {
+        if (action === 'playPause') playOrPauseNeteaseMusic()
+        else if (action === 'next') skipNeteaseMusic(1)
+        else if (action === 'previous') skipNeteaseMusic(-1)
       }}
     />
   )

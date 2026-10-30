@@ -6,6 +6,7 @@ const none: Record<NowPlayingSource, boolean> = {
   spotify: false,
   appleMusic: false,
   qqMusic: false,
+  neteaseMusic: false,
   youtubeMusic: false,
 }
 const only = (...sources: NowPlayingSource[]) => ({ ...none, ...Object.fromEntries(sources.map((s) => [s, true])) })

@@ -33,6 +33,7 @@ const ROLES: AppIconRole[] = [
   'maps',
   'music',
   'qqMusic',
+  'neteaseMusic',
   'spotify',
   'podcasts',
   'messages',

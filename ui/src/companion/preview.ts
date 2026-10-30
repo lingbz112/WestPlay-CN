@@ -90,6 +90,7 @@ const accounts = {
   spotify: false as boolean | null,
   appleMusic: false as boolean | null,
   qqMusic: false as boolean | null,
+  neteaseMusic: false as boolean | null,
   signingIn: '',
 }
 
@@ -141,6 +142,8 @@ function status(): HostStatus {
     appleMusicSigningIn: accounts.signingIn === 'appleMusic',
     qqMusicSignedIn: accounts.qqMusic,
     qqMusicSigningIn: accounts.signingIn === 'qqMusic',
+    neteaseMusicSignedIn: accounts.neteaseMusic,
+    neteaseMusicSigningIn: accounts.signingIn === 'neteaseMusic',
     map,
     mapFolder: null,
     mapBuilt: map.state === 'ready' ? Math.floor(Date.now() / 1000) - 3 * 86_400 : null,
@@ -191,7 +194,7 @@ function setLook(change: Partial<Settings['look']>) {
 const later = <T>(value: T, ms = 300) => new Promise<T>((resolve) => setTimeout(() => resolve(value), ms))
 
 /** A sign-in: the service's window "open" a moment, then signed in. */
-function signIn(service: 'youtube' | 'spotify' | 'appleMusic' | 'qqMusic') {
+function signIn(service: 'youtube' | 'spotify' | 'appleMusic' | 'qqMusic' | 'neteaseMusic') {
   accounts.signingIn = service
   emit('host-status', status())
   setTimeout(() => {
@@ -318,6 +321,9 @@ export function answer(command: string, args?: Record<string, unknown>): Promise
     case 'qq_music_sign_in':
       signIn('qqMusic')
       return later(undefined)
+    case 'netease_music_sign_in':
+      signIn('neteaseMusic')
+      return later(undefined)
     case 'open_support_page':
       window.open('https://kreosus.com/enes-less', '_blank', 'noopener')
       return later(undefined)
@@ -344,6 +350,12 @@ export function answer(command: string, args?: Record<string, unknown>): Promise
     case 'qq_music_sign_out':
       setTimeout(() => {
         accounts.qqMusic = false
+        emit('host-status', status())
+      }, 1200)
+      return later(undefined)
+    case 'netease_music_sign_out':
+      setTimeout(() => {
+        accounts.neteaseMusic = false
         emit('host-status', status())
       }, 1200)
       return later(undefined)

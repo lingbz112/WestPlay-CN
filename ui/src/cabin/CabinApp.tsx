@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { isInHost, postToHost } from '../shared/host'
 import { appleMusicPlayer, pauseAppleMusicWithGame } from './apps/music/pauseWithGame'
 import { pauseQqMusicWithGame, qqMusicPlayer } from './apps/qqMusic/pauseWithGame'
+import { pauseNeteaseMusicWithGame, neteaseMusicPlayer } from './apps/neteaseMusic/pauseWithGame'
 import { keybinds } from './apps/keybinds'
 import { oneAtATime } from './apps/oneAtATime'
 import { pauseSpotifyWithGame, spotifyPlayer } from './apps/spotify/pauseWithGame'
@@ -40,10 +41,11 @@ export function CabinApp() {
   useEffect(() => pauseSpotifyWithGame(), [])
   useEffect(() => pauseAppleMusicWithGame(), [])
   useEffect(() => pauseQqMusicWithGame(), [])
+  useEffect(() => pauseNeteaseMusicWithGame(), [])
   useEffect(() => pauseYouTubeMusicWithGame(), [])
   // One of them at a time: the newest to start plays on, the others pause (apps/oneAtATime.ts).
   useEffect(
-    () => oneAtATime([youtubePlayer, spotifyPlayer, appleMusicPlayer, qqMusicPlayer, youtubeMusicPlayer]),
+    () => oneAtATime([youtubePlayer, spotifyPlayer, appleMusicPlayer, qqMusicPlayer, neteaseMusicPlayer, youtubeMusicPlayer]),
     [],
   )
   // The player's keybinds pressed in the game: the music's volume, or play/pause (apps/keybinds.ts).
@@ -89,7 +91,7 @@ export function CabinApp() {
 /** Acts on each keybind pressed in the game, for the cab's players, showing a volume it sets. Returns the
  * function that stops it. */
 function followKeybinds(): () => void {
-  const binds = keybinds([youtubePlayer, spotifyPlayer, appleMusicPlayer, qqMusicPlayer, youtubeMusicPlayer])
+  const binds = keybinds([youtubePlayer, spotifyPlayer, appleMusicPlayer, qqMusicPlayer, neteaseMusicPlayer, youtubeMusicPlayer])
   const stop = useLive.subscribe((live, before) => {
     if (!live.keybind || live.keybind.count === before.keybind?.count) return
     const shown = binds.press(live.keybind.action)

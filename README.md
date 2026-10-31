@@ -2,15 +2,6 @@
 
 **English** | [中文说明](README.zh-CN.md)
 
-> [!WARNING]
-> **Known issue: screen recordings flicker when NVIDIA App desktop capture is enabled.**
->
-> NVIDIA App desktop capture also includes the WebView2/Chromium composition surfaces WestPlay uses to render the truck screen. As a result, recordings alternate between the game, browser and truck-screen images.
->
-> **Workaround: disable desktop capture in NVIDIA App before recording.**
->
-> This issue cannot currently be fixed reliably on the WestPlay side.
-
 This repository is a personal maintenance fork of [enes-less/WestPlay](https://github.com/enes-less/WestPlay), based on version `2.1.4`. It focuses on Chinese music-service integrations, Chinese localization and cabin audio enhancements.
 
 Packages, release notes and known issues are published only in this repository's [Releases](https://github.com/lingbz112/WestPlay-CN/releases). This README is limited to version information and essential notices.

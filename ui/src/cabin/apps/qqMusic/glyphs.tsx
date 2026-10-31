@@ -116,6 +116,16 @@ export function RepeatGlyph({ size }: GlyphProps) {
   )
 }
 
+/** Sequential play: the list once, in order — a mode of its own, beside shuffle and the loop. */
+export function SequenceGlyph({ size }: GlyphProps) {
+  return (
+    <LineGlyph size={size}>
+      <path d="M3 7h8M3 17h8" />
+      <path d="M3 12h13m0 0-3-3m3 3-3 3" />
+    </LineGlyph>
+  )
+}
+
 export function RepeatOneGlyph({ size }: GlyphProps) {
   return (
     <LineGlyph size={size}>

@@ -66,6 +66,11 @@ window.westplayCabSound = (media, say, state = {}) => {
       else param.setTargetAtTime(value, currentTime, 0.05);
     }
   };
+  // The cab's EQ switch (Settings › Sound's first row): off, `character` is "off" and nothing is shaped --
+  // no tone, no cabin curve or compression, no early reflections, no reverb, no bass management -- so the
+  // sound is only the truck's speakers where they're placed.
+  let character = "full";
+  const soundOn = () => character !== "off";
   // The player's tone (the cab's Settings › Sound), as a car stereo's: bass, mid and treble, dB each, on all
   // the sound before it's split to the speakers. Each band a filter (the bass a shelf under 100 Hz, the mids a
   // broad bell round 1 kHz, the treble a shelf over 8 kHz); the whole turned down by the most any band lifts, so
@@ -76,7 +81,25 @@ window.westplayCabSound = (media, say, state = {}) => {
     ["mid", { type: "peaking", frequency: 1000, Q: 0.7 }],
     ["treble", { type: "highshelf", frequency: 8000 }],
   ];
-  const flat = () => TONE.every(([band]) => !equalizer[band]);
+  // Advanced (the cab's Settings › Sound Settings › Equalizer): fifteen bands instead, an ISO two-thirds of an
+  // octave each from 25 Hz to 16 kHz -- the range a car's three-band tone control leaves alone -- each a peaking
+  // filter of its own. One or the other plays; both curves are kept, so switching back keeps what was tuned.
+  const GRAPHIC_BANDS = 15;
+  const GRAPHIC_MOST = 12;
+  const GRAPHIC = Array.from(
+    { length: GRAPHIC_BANDS },
+    (_, i) => 25 * (16000 / 25) ** (i / (GRAPHIC_BANDS - 1)),
+  );
+  let advanced = false;
+  let graphic = new Array(GRAPHIC_BANDS).fill(0);
+  // The filters the tone is made of now, and the gain each plays (dB).
+  const toneFilters = () =>
+    advanced
+      ? GRAPHIC.map((frequency) => ({ type: "peaking", frequency, Q: 1.1 }))
+      : TONE.map(([, options]) => options);
+  const toneCurve = () => (advanced ? graphic : TONE.map(([band]) => equalizer[band]));
+  // Nothing to shape (the switch off), or a flat curve: the tone's filters pass the sound as it is.
+  const flat = () => !soundOn() || toneCurve().every((db) => !db);
   const setTone = (atOnce) => {
     if (!audio?.tone) return;
     const { currentTime } = audio.context;
@@ -84,14 +107,14 @@ window.westplayCabSound = (media, say, state = {}) => {
       atOnce
         ? param.setValueAtTime(value, currentTime)
         : param.setTargetAtTime(value, currentTime, 0.05);
-    TONE.forEach(([band], i) => set(audio.tone.bands[i].gain, equalizer[band]));
-    const lift = Math.max(0, ...TONE.map(([band]) => equalizer[band]));
+    const curve = soundOn() ? toneCurve() : [];
+    audio.tone.bands.forEach((band, i) => set(band.gain, curve[i] ?? 0));
+    const lift = Math.max(0, ...curve);
     set(audio.tone.trim.gain, 10 ** (-lift / 20));
   };
   // Cabin character and reverb are independent layers. Cabin IR adds short reflections; the reverb page adds
   // a damped diffuse tail generated for the chosen room size. Both are sends after the speaker mix, so the
   // direct sound keeps its speaker position. A 180 Hz high-pass keeps heavy bass out of the diffuse tail.
-  let character = "full";
   let reverb = { enabled: true, size: 55, amount: 32 };
   let reflectionAmount = 100;
   let bassCutoff = 60;
@@ -99,10 +122,11 @@ window.westplayCabSound = (media, say, state = {}) => {
   const level = (value, most = 100) =>
     Math.max(0, Math.min(most, Number(value) || 0));
   const cabinToneOn = () =>
-    character === "equalized" || character === "full";
-  const reflectionsOn = () => character === "impulse" || character === "full";
+    soundOn() && (character === "equalized" || character === "full");
+  const reflectionsOn = () =>
+    soundOn() && (character === "impulse" || character === "full");
   const reverbOn = () =>
-    reverb.enabled && reverb.amount > 0;
+    soundOn() && reverb.enabled && reverb.amount > 0;
   const reverbGain = () => (reverb.amount / 100) ** 1.35 * 0.75;
   const reflectionGain = () =>
     (character === "full" ? 0.18 : 0.32) * (reflectionAmount / 100);
@@ -347,6 +371,23 @@ window.westplayCabSound = (media, say, state = {}) => {
         ? (state.playing?.() ?? true)
         : Boolean(video && !video.paused && !video.ended);
     const { context } = audio;
+    // A new source (the page's player replaced, a song's own element): the way is already made, its head the
+    // tone's first filter, so only the source is moved onto it. Rebuilding the whole cab — its impulses, its
+    // panners — takes long enough to be heard as a hitch at the start of a song; moving one connection isn't.
+    if (node && audio.tone && audio.wired === speakers && audio.source !== node) {
+      try {
+        audio.source?.disconnect();
+      } catch {}
+      try {
+        node.disconnect(context.destination);
+      } catch {}
+      node.connect(audio.tone.bands[0]);
+      audio.source = node;
+      audio.video = null;
+      placed = null;
+      placeHead();
+      return;
+    }
     if (node) {
       if (audio.source !== node) {
         try {
@@ -387,14 +428,14 @@ window.westplayCabSound = (media, say, state = {}) => {
       audio.nodes.push(node);
       return node;
     };
-    // First of all, the tone.
-    const bands = TONE.map(([, options]) =>
+    // First of all, the tone: three bands, or fifteen while Advanced is on.
+    const bands = toneFilters().map((options) =>
       keep(new BiquadFilterNode(context, options)),
     );
     const trim = keep(new GainNode(context));
     bands.reduce((from, to) => (from.connect(to), to)).connect(trim);
     audio.source.connect(bands[0]);
-    audio.tone = { bands, trim };
+    audio.tone = { bands, trim, advanced };
     setTone(true);
     // The cabin's broad transfer, not a concert room: a little low-frequency gain, a gentle upper-mid
     // recession and softer highs, then only enough compression to keep very dynamic material coherent.
@@ -525,39 +566,45 @@ window.westplayCabSound = (media, say, state = {}) => {
     split.connect(channels.both, 0);
     split.connect(channels.both, 1);
     // Standard car bass management: below the selected cutoff the cabin sums the channels to mono and bypasses the
-    // directional HRTF path. Above it, each side keeps its normal speaker imaging.
-    const highs = Object.fromEntries(
-      Object.entries(channels).map(([name, channel]) => {
-        const high = keep(
-          new BiquadFilterNode(context, {
-            type: "highpass",
-            frequency: bassCutoff,
-            Q: Math.SQRT1_2,
+    // directional HRTF path. Above it, each side keeps its normal speaker imaging. The EQ switch off: no
+    // crossover, each speaker's own band the only split.
+    let bassLow = null;
+    const highs = soundOn()
+      ? Object.fromEntries(
+          Object.entries(channels).map(([name, channel]) => {
+            const high = keep(
+              new BiquadFilterNode(context, {
+                type: "highpass",
+                frequency: bassCutoff,
+                Q: Math.SQRT1_2,
+              }),
+            );
+            channel.connect(high);
+            return [name, high];
           }),
-        );
-        channel.connect(high);
-        return [name, high];
-      }),
-    );
-    const bassMono = keep(
-      new GainNode(context, {
-        channelCount: 1,
-        channelCountMode: "explicit",
-        channelInterpretation: "speakers",
-        gain: 0.5,
-      }),
-    );
-    split.connect(bassMono, 0);
-    split.connect(bassMono, 1);
-    const bassLow = keep(
-      new BiquadFilterNode(context, {
-        type: "lowpass",
-        frequency: bassCutoff,
-        Q: Math.SQRT1_2,
-      }),
-    );
-    bassMono.connect(bassLow);
-    audio.bassManagement = { highs, bassLow };
+        )
+      : channels;
+    if (soundOn()) {
+      const bassMono = keep(
+        new GainNode(context, {
+          channelCount: 1,
+          channelCountMode: "explicit",
+          channelInterpretation: "speakers",
+          gain: 0.5,
+        }),
+      );
+      split.connect(bassMono, 0);
+      split.connect(bassMono, 1);
+      bassLow = keep(
+        new BiquadFilterNode(context, {
+          type: "lowpass",
+          frequency: bassCutoff,
+          Q: Math.SQRT1_2,
+        }),
+      );
+      bassMono.connect(bassLow);
+    }
+    audio.bassManagement = bassLow ? { highs, bassLow } : null;
     // Made up for the distance as the speakers' power adds up at the seat (each plays its own part of the
     // sound): their loudnesses there, squared, summed. (Their average made it up far too much: a loud song
     // went past full, and the limiter squashed it all the time.)
@@ -588,7 +635,7 @@ window.westplayCabSound = (media, say, state = {}) => {
     );
     audio.limiter = limiter;
     // The walls after the limiter: it would make up what they take.
-    bassLow.connect(out);
+    bassLow?.connect(out);
     out.connect(limiter);
     limiter.connect(walls);
     if (reflectionsOn() && head) {
@@ -736,6 +783,8 @@ window.westplayCabSound = (media, say, state = {}) => {
     ];
 
   return {
+    /** Whether the cab's way is made (its filters, impulses and panners there to play through). */
+    built: () => Boolean(audio?.tone),
     speakers(list) {
       speakers = list ?? null;
       reflectionOrigin = null;
@@ -766,15 +815,22 @@ window.westplayCabSound = (media, say, state = {}) => {
       equalizer = Object.fromEntries(
         TONE.map(([band]) => [band, Number(told?.[band]) || 0]),
       );
+      const curve = Array.isArray(told?.bands) ? told.bands : [];
+      graphic = Array.from({ length: GRAPHIC_BANDS }, (_, i) =>
+        Math.max(-GRAPHIC_MOST, Math.min(GRAPHIC_MOST, Number(curve[i]) || 0)),
+      );
+      // Three bands and fifteen are different graphs: one traded for the other.
+      const was = advanced;
+      advanced = Boolean(told?.advanced);
+      if (was !== advanced && audio) audio.wired = undefined;
       setTone(false);
       try {
         wire();
       } catch {}
     },
     character(told) {
-      const next = ["reference", "equalized", "impulse", "full"].includes(
-        told,
-      )
+      const next = ["reference", "equalized", "impulse", "full", "off"]
+        .includes(told)
         ? told
         : "full";
       if (next === character) return;
@@ -843,5 +899,23 @@ window.westplayCabSound = (media, say, state = {}) => {
       } catch {}
     },
     level: cabLevel,
+    /** What the sound's way is now, for a page that has to tell a silent song from a broken one: whether the
+     * cab's way is built, its context's state, how many speakers it plays, and whether the head is known. */
+    state: () => ({
+      built: Boolean(audio?.tone),
+      context: audio?.context?.state ?? "none",
+      speakers: speakers?.length ?? 0,
+      head: Boolean(head),
+      // The level after the cab (the first meter's RMS), for a page that has to tell a quiet song from a
+      // silent one.
+      level: audio ? (cabLevel()?.[0] ?? null) : null,
+    }),
+    /** Wakes the sound's context (a page with no way to be clicked, as a hidden one, can find it asleep). */
+    wake: () => {
+      const context = audio?.context;
+      if (!context) return "none";
+      if (context.state === "suspended") context.resume().catch(() => {});
+      return context.state;
+    },
   };
 };

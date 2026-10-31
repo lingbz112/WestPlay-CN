@@ -1,5 +1,5 @@
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { type SignedIn, useAskOnce, useSignedIn } from './accounts'
+import { useAskOnce, useSignedIn } from './accounts'
 import { appVersion, call, PREVIEW_TUTORIAL } from './bridge'
 import { Onboarding } from './onboarding/Onboarding'
 import { languageOf, percent, type Words, wordsFor } from './onboarding/words'
@@ -320,7 +320,6 @@ function Room({
                 cw={cw}
                 words={words}
                 status={status}
-                signedIn={signedIn}
                 settings={settings}
                 setup={setup}
                 update={update}
@@ -354,8 +353,8 @@ function Room({
 
 /**
  * The sections, at the left: WestPlay's name and where it is now, then each section with what it is now
- * (WestPlay on or off, the key, who's signed in, the map, the game's version, WestPlay's own or an update), in
- * groups. The one that's open is lit by a capsule of glass that glides from section to section.
+ * (WestPlay on or off, the key, the map, the game's version, WestPlay's own or an update), in groups. The one
+ * that's open is lit by a capsule of glass that glides from section to section.
  */
 function SectionList({
   section,
@@ -363,7 +362,6 @@ function SectionList({
   cw,
   words,
   status,
-  signedIn,
   settings,
   setup,
   update,
@@ -374,7 +372,6 @@ function SectionList({
   cw: CompanionWords
   words: Words
   status: HostStatus | null
-  signedIn: SignedIn
   settings: SettingsState
   setup: SetupState
   update: Offer | null
@@ -404,12 +401,9 @@ function SectionList({
               : '',
     controls: keyName,
     customize: '',
-    accounts:
-      signedIn.youtube === null && signedIn.spotify === null && signedIn.appleMusic === null
-        ? ''
-        : [signedIn.youtube && 'YouTube', signedIn.spotify && 'Spotify', signedIn.appleMusic && 'Apple Music']
-            .filter(Boolean)
-            .join(', ') || cw.values.none,
+    // Never shows who's signed in (the row reads only "账号"): a service the list doesn't name (QQ Music,
+    // 网易云音乐) can still be, so any state shown here was wrong.
+    accounts: '',
     map: mapValue(status, mapProgress, cw, words),
     setup: setup.game?.version ?? '',
     about: update ? cw.update.badge : version,

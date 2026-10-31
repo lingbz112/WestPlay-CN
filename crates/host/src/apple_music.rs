@@ -61,6 +61,10 @@ pub enum Command {
         /// Play one search result without replacing the queue already playing.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         insert: bool,
+        /// The songs themselves, as the app shows them (QQ Music's player, which plays them from an <audio> of
+        /// its own, has no page of its own to read their names from).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tracks: Option<Vec<serde_json::Value>>,
     },
     Pause,
     Next,

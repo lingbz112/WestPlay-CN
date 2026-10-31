@@ -451,7 +451,8 @@
         name: playlist.name,
         by: playlist.creator?.nickname || playlist.copywriter || "",
         note: playlist.copywriter || playlist.description || "",
-        image: playlist.coverImgUrl,
+        // The home's recommended playlists name their picture `picUrl`, a playlist's own `coverImgUrl`.
+        image: playlist.coverImgUrl ?? playlist.picUrl ?? playlist.coverUrl,
       }),
     );
 
@@ -563,16 +564,33 @@
   ];
 
   const radioAnswer = async () => {
+    // The site's own charts, covers and update notes with them; the ids above if the list can't be had.
+    const answer = await getJson("/api/toplist").catch(() => null);
+    const listed = (answer?.list ?? [])
+      .filter((chart) => chart?.id)
+      .map((chart) => ({
+        id: chart.id,
+        name: chart.name,
+        note: chart.updateFrequency ?? "",
+        image: chart.coverImgUrl ?? chart.coverUrl ?? null,
+      }));
+    const charts = listed.length > 0 ? listed : CHARTS;
     const station = (chart) => ({
-      ...itemOf({ kind: "station", id: chart.id, name: chart.name, by: chart.note, note: chart.note }),
+      ...itemOf({
+        kind: "station",
+        id: chart.id,
+        name: chart.name,
+        by: chart.note,
+        note: chart.note,
+        image: chart.image ?? null,
+      }),
       id: itemId("station", chart.id),
     });
-    const pick = (ids) => station(CHARTS.find((chart) => chart.id === ids));
+    const featured = CHARTS.slice(0, 4).map((chart) => chart.id);
+    const first = featured.map((id) => charts.find((chart) => String(chart.id) === String(id))).filter(Boolean);
+    const rest = charts.filter((chart) => !featured.some((id) => String(id) === String(chart.id)));
     return {
-      sections: [
-        section("云音乐特色榜", "shelf", [19723756, 3779629, 2884035, 3778678].map(pick)),
-        section("全球媒体榜", "shelf", CHARTS.slice(4).map(station)),
-      ],
+      sections: [section("云音乐特色榜", "shelf", first.map(station)), section("全球媒体榜", "shelf", rest.map(station))],
     };
   };
 
@@ -709,7 +727,17 @@
   // A new element for every song: an element reloaded with another cross-origin source is refused by some
   // engines (Edge's WebView2), and the truck's speakers take whichever element plays now.
   let audio = null;
-  let volume = 0.8;
+  // The volume, kept in the page's own storage as QQ Music's is: opening WestPlay plays as loud as it was.
+  const VOLUME_KEY = "westplay.netease.volume";
+  let volume = (() => {
+    try {
+      const raw = localStorage.getItem(VOLUME_KEY);
+      const saved = Number(raw);
+      return raw !== null && Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.8;
+    } catch {
+      return 0.8;
+    }
+  })();
   // Where the host fetches the songs whose hosts refuse the page its sound (given with `action: "proxy"`).
   let proxy = null;
   // The driver's head is known (the game's telemetry): until then the truck's speakers don't take the sound,
@@ -1065,13 +1093,101 @@
     if (!force && now - playbackAt < 700) return;
     playbackAt = now;
     playbackOf()
-      .then((playback) => post({ playback }))
+      .then((playback) => {
+        post({ playback });
+        keepPlaceSoon();
+      })
       .catch((error) => log(`playback: ${error}`));
   };
 
   const sayState = () => {
     post({ state: { signedIn, playing: !audio.paused && !audio.ended, avatar } });
   };
+
+  // --- What the last run played -------------------------------------------------------------------------
+  //
+  // The song, its place in the queue and how far it played are kept in the page's own storage, and put back as
+  // WestPlay opens: shown as they were, paused — opening WestPlay never starts music by itself. The site's
+  // sound URLs expire, so the song is fetched afresh and only its place is kept.
+
+  const LAST_KEY = "westplay.netease.last";
+  let restored = false;
+  let rememberedAt = 0;
+
+  const keepPlace = () => {
+    const id = currentId();
+    if (!id) return;
+    try {
+      localStorage.setItem(
+        LAST_KEY,
+        JSON.stringify({
+          ids: queue.ids.slice(0, 200).map(String),
+          index: queue.index,
+          context: queue.context,
+          position: Math.max(0, Number(audio?.currentTime) || 0),
+        }),
+      );
+    } catch {}
+  };
+
+  /** Kept now and then as it plays (its own storage, written at most every two seconds). */
+  const keepPlaceSoon = () => {
+    const now = performance.now();
+    if (now - rememberedAt < 2000) return;
+    rememberedAt = now;
+    keepPlace();
+  };
+
+  /** The last run's song, its queue and its place, loaded without playing. */
+  const restore = async () => {
+    if (restored) return;
+    restored = true;
+    if (currentId()) return;
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(LAST_KEY) || "null");
+    } catch {}
+    const ids = Array.isArray(saved?.ids) ? saved.ids.map(String) : [];
+    const index = Math.min(Math.max(0, Number(saved?.index) || 0), Math.max(0, ids.length - 1));
+    const id = ids[index];
+    if (!id) return;
+    const track = await trackOfId(id).catch(() => null);
+    if (!track) return;
+    queue.ids = ids;
+    queue.index = index;
+    queue.context = saved.context ?? null;
+    const found = await urlOf(id).catch(() => null);
+    if (found) {
+      queue.trial = found.trial ?? null;
+      throughCab = Boolean(found.cors);
+      if (audio) {
+        audio.pause();
+        audio.removeAttribute("src");
+      }
+      audio = newAudio(throughCab);
+      audio.src = found.url;
+      const at = Math.max(0, Number(saved.position) || 0);
+      audio.addEventListener(
+        "loadedmetadata",
+        () => {
+          try {
+            const most = Math.max(0, (Number(audio.duration) || at) - 1);
+            audio.currentTime = Math.min(at, most);
+          } catch {}
+          sayPlayback(true);
+        },
+        { once: true },
+      );
+    }
+    queue.loading = false;
+    sayPlayback(true);
+    log(`restored ${id} at ${Math.round(Number(saved.position) || 0)}s`);
+  };
+
+  window.addEventListener("pagehide", keepPlace);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") keepPlace();
+  });
 
   setInterval(() => {
     checkAccount().catch(() => {});
@@ -1092,6 +1208,7 @@
       checkAccount(true).catch(() => {});
       sayState();
       sayPlayback();
+      void restore();
       return;
     }
     if (action === "ask") {
@@ -1159,6 +1276,7 @@
     }
     if (action === "pause") {
       audio.pause();
+      keepPlace();
       sayPlayback();
       return;
     }
@@ -1180,17 +1298,25 @@
     if (action === "volume") {
       const share = Math.min(1, Math.max(0, (Number(data.percent) || 0) / 100));
       volume = share;
+      try {
+        localStorage.setItem(VOLUME_KEY, String(share));
+      } catch {}
       if (audio) audio.volume = share;
       sayPlayback(true);
       return;
     }
     if (action === "shuffle") {
       queue.shuffle = Boolean(data.on);
+      // Shuffle and the loop modes are one setting: turning shuffle on leaves the loop (the list plays
+      // through once, in a random order), so the two can't be lit at once.
+      if (queue.shuffle) queue.repeat = "off";
       sayPlayback();
       return;
     }
     if (action === "repeat") {
       queue.repeat = data.mode === "one" || data.mode === "all" ? data.mode : "off";
+      // And turning the loop on leaves the shuffle.
+      queue.shuffle = false;
       sayPlayback();
       return;
     }
@@ -1205,7 +1331,8 @@
         const id = String(data.id ?? "").split(":").pop();
         const on = Boolean(data.on);
         try {
-          await postForm("/api/song/like", { id, like: on, csrf_token: csrf() });
+          // The song is `trackId` to this API (`id` is a 400): the site's own player calls it so.
+          await postForm("/api/song/like", { trackId: id, like: on, csrf_token: csrf() });
           if (on) liked.add(String(id));
           else liked.delete(String(id));
         } catch (error) {

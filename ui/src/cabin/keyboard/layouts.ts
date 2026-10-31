@@ -25,9 +25,12 @@ export type Key =
   /** Puts the keyboard away. */
   | { kind: 'hide' }
 
+/** Each language's letters. Chinese has none of its own: the cabin's keyboard types Latin letters, as the game's
+ * own search fields do for Chinese names (`zh` takes English's). */
 const LETTERS: Record<Language, readonly string[]> = {
   en: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'],
   tr: ['qwertyuıopğü', 'asdfghjklşi', 'zxcvbnmöç'],
+  zh: ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'],
 }
 
 const NUMBERS = ['1234567890', '-/:;()€&@"', ".,?!'"]

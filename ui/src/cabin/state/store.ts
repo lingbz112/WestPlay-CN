@@ -108,6 +108,13 @@ interface CabinState {
   cabinCharacter: CabinCharacter
   reflection: CabinReflection
   bass: BassManagement
+  /** The cab's EQ switch (Settings › Sound's first row): off, every player plays its speakers as they're placed
+   * and shapes nothing. Kept with WestPlay's settings, the host tells the players. */
+  soundEnabled: boolean
+  /** The preset playing (Settings › Sound › Presets), by its id; `null`: none. Kept with WestPlay's settings. */
+  preset: string | null
+  /** The presets offered, tuned in WestPlay's developer window (its own file each): none until one is made. */
+  presets: Preset[]
   power: PowerState
   /**
    * The screen is handed back to the truck (its stock screen shows, with WestPlay's button to come back),
@@ -123,6 +130,10 @@ interface CabinState {
   /** One band of the curve, set in Settings › Equalizer (choosing Custom): played by every player, and kept with
    * WestPlay's settings. */
   setEqualizerBand(band: keyof Equalizer, db: number): void
+  /** One band of the fifteen-band curve, set in Settings › Equalizer (Advanced on): as `setEqualizerBand`. */
+  setGraphicBand(index: number, db: number): void
+  /** Advanced on: the fifteen bands play instead of the three (both curves kept). */
+  setEqualizerAdvanced(advanced: boolean): void
   /** Custom (the curve plays) or Recommended (flat), the curve kept either way. */
   chooseEqualizer(custom: boolean): void
   /** The curve flat again. */
@@ -133,11 +144,22 @@ interface CabinState {
   setCabinCharacter(character: CabinCharacter): void
   setReflection(change: Partial<CabinReflection>): void
   setBass(change: Partial<BassManagement>): void
+  /** The cab's EQ switch, kept with WestPlay's settings: every player told (off: it shapes nothing). */
+  setSoundEnabled(enabled: boolean): void
+  /** The preset chosen in Settings › Sound › Presets, kept with WestPlay's settings like the rest. */
+  setPreset(id: string | null): void
   setOemMode(mode: OemMode): void
   /** The player's choice, in Settings: applied, and kept with WestPlay's settings. */
   chooseOemMode(mode: OemMode): void
   powerEvent(event: PowerEvent): void
   setTruckScreen(shown: boolean): void
+}
+
+/** A cabin preset, tuned in WestPlay's developer window: the id WestPlay's settings keep, and the name the list
+ * shows. */
+export interface Preset {
+  id: string
+  name: string
 }
 
 /** What survives a restart of the app: where you were and your choices, never the power state. */
@@ -164,6 +186,9 @@ export const useCabin = create<CabinState>()(
       cabinCharacter: DEFAULT_CABIN_CHARACTER,
       reflection: DEFAULT_CABIN_REFLECTION,
       bass: DEFAULT_BASS_MANAGEMENT,
+      soundEnabled: true,
+      preset: null,
+      presets: [],
       power: INITIAL_POWER,
       navigate: (action) => set((state) => ({ navigation: navigate(state.navigation, action) })),
       setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
@@ -181,13 +206,27 @@ export const useCabin = create<CabinState>()(
         set({ equalizer, equalizerCustom: true })
         if (isInHost()) postToHost({ type: 'equalizer', custom: true, ...equalizer })
       },
+      setGraphicBand: (index, db) => {
+        const now = useCabin.getState().equalizer
+        const bands = now.bands.map((each, at) => (at === index ? db : each))
+        const equalizer = toEqualizer({ ...now, bands })
+        set({ equalizer, equalizerCustom: true })
+        if (isInHost()) postToHost({ type: 'equalizer', custom: true, ...equalizer })
+      },
+      setEqualizerAdvanced: (advanced) => {
+        const equalizer = toEqualizer({ ...useCabin.getState().equalizer, advanced })
+        set({ equalizer })
+        if (isInHost()) postToHost({ type: 'equalizer', custom: useCabin.getState().equalizerCustom, ...equalizer })
+      },
       chooseEqualizer: (custom) => {
         set({ equalizerCustom: custom })
         if (isInHost()) postToHost({ type: 'equalizer', custom, ...useCabin.getState().equalizer })
       },
       resetEqualizer: () => {
-        set({ equalizer: FLAT })
-        if (isInHost()) postToHost({ type: 'equalizer', custom: useCabin.getState().equalizerCustom, ...FLAT })
+        // Both curves flat, in whichever set of bands is playing.
+        const equalizer = toEqualizer({ ...FLAT, advanced: useCabin.getState().equalizer.advanced })
+        set({ equalizer })
+        if (isInHost()) postToHost({ type: 'equalizer', custom: useCabin.getState().equalizerCustom, ...equalizer })
       },
       setReverb: (change) => {
         const reverb = toReverb({ ...useCabin.getState().reverb, ...change })
@@ -210,6 +249,14 @@ export const useCabin = create<CabinState>()(
         const bass = toBassManagement({ ...useCabin.getState().bass, ...change })
         set({ bass })
         if (isInHost()) postToHost({ type: 'bass', ...bass })
+      },
+      setSoundEnabled: (enabled) => {
+        set({ soundEnabled: enabled })
+        if (isInHost()) postToHost({ type: 'soundEnabled', enabled })
+      },
+      setPreset: (id) => {
+        set({ preset: id })
+        if (isInHost()) postToHost({ type: 'preset', id })
       },
       setOemMode: (oemMode) => set({ oemMode }),
       chooseOemMode: (oemMode) => {
@@ -525,6 +572,8 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
           cabinCharacter: toCabinCharacter(message.character),
           reflection: toCabinReflection(message.reflection),
           bass: toBassManagement(message.bass),
+          soundEnabled: message.soundEnabled !== false,
+          preset: message.preset ?? null,
         })
         setIcons({
           iconSet: message.iconSet ?? null,

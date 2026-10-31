@@ -320,6 +320,8 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     // The cab's shared reflections (Settings › Sound › Cabin Reverb), passed on with the cab too.
     let mut reverb = config.settings.get().sound.reverb.clamped();
     let mut character = config.settings.get().sound.character;
+    // The cab's EQ switch (Settings › Sound's first row): off, the players are told CabinCharacter::Off.
+    let mut enabled = config.settings.get().sound.enabled;
     let mut reflection = config.settings.get().sound.reflection.clamped();
     let mut bass = config.settings.get().sound.bass.clamped();
     // The music's spectrum wanted by the cab (its Equalizer open): asked of the players with the cab.
@@ -893,6 +895,23 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                         (config.on_settings)(&settings);
                     }
                 }
+                Some(PageMessage::SoundEnabled { enabled: on }) => {
+                    let mut settings = config.settings.get();
+                    if settings.sound.enabled != on {
+                        enabled = on;
+                        settings.sound.enabled = on;
+                        config.settings.set(settings.clone());
+                        (config.on_settings)(&settings);
+                    }
+                }
+                Some(PageMessage::Preset { id }) => {
+                    let mut settings = config.settings.get();
+                    if id.as_ref().is_none_or(|id| id.len() <= 300) && settings.sound.preset != id {
+                        settings.sound.preset = id;
+                        config.settings.set(settings.clone());
+                        (config.on_settings)(&settings);
+                    }
+                }
                 Some(PageMessage::Reflection { amount }) => {
                     let mut settings = config.settings.get();
                     let reflection_setting = speakers::CabinReflection { amount }.clamped();
@@ -1457,7 +1476,6 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                         qq_music::Report::Answer(answer) => {
                             let _ = webview.post_json(&qq_music::answer_message(&answer));
                         }
-                        qq_music::Report::Queued => log!("[qq music] queued a song"),
                         qq_music::Report::Playback(playback) => {
                             let heard = playback.as_deref().map(|playback| play_log::Heard {
                                 doing: play_log::doing(playback.loading, playback.playing),
@@ -1697,6 +1715,9 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 _ if speakers::by_parts(truck.id.as_str()) => None,
                 _ => speakers::in_truck(truck.id.as_str()),
             };
+            // The EQ switch off: the players shape nothing at all, whatever character is chosen
+            // (`CabinCharacter::Off`: the speakers as they're placed, and only them).
+            let character = if enabled { character } else { speakers::CabinCharacter::Off };
             if let Some(player) = &youtube {
                 let _ = player.cab(
                     truck_speakers,
@@ -2348,6 +2369,8 @@ fn settings_message(settings: &settings::Settings) -> String {
         "wallpaper": settings.look.wallpaper,
         "iconSet": settings.look.icon_set,
         "iconStyle": settings.look.icon_style,
+        "soundEnabled": settings.sound.enabled,
+        "preset": settings.sound.preset,
         "equalizer": settings.sound.equalizer.clamped(),
         "equalizerCustom": settings.sound.custom,
         "reverb": settings.sound.reverb.clamped(),
@@ -2397,6 +2420,14 @@ enum PageMessage {
     /// The amount of cabin modelling every player uses.
     Character {
         character: speakers::CabinCharacter,
+    },
+    /// The cab's EQ switch, off or on (Settings › Sound's first row).
+    SoundEnabled {
+        enabled: bool,
+    },
+    /// The preset chosen in Settings › Sound (`null`: none), by its id.
+    Preset {
+        id: Option<String>,
     },
     Reflection {
         amount: i8,
@@ -2680,7 +2711,7 @@ mod tests {
         assert_eq!(
             parse_page_message(r#"{"type":"equalizer","bass":-3,"mid":0,"treble":2,"custom":true}"#),
             Some(PageMessage::Equalizer {
-                equalizer: crate::speakers::Equalizer { bass: -3, mid: 0, treble: 2 },
+                equalizer: crate::speakers::Equalizer { bass: -3, mid: 0, treble: 2, ..Default::default() },
                 custom: true
             })
         );
@@ -2688,7 +2719,7 @@ mod tests {
         assert_eq!(
             parse_page_message(r#"{"type":"equalizer","bass":4}"#),
             Some(PageMessage::Equalizer {
-                equalizer: crate::speakers::Equalizer { bass: 4, mid: 0, treble: 0 },
+                equalizer: crate::speakers::Equalizer { bass: 4, mid: 0, treble: 0, ..Default::default() },
                 custom: false
             })
         );
@@ -2705,6 +2736,15 @@ mod tests {
             parse_page_message(r#"{"type":"reflection","amount":80}"#),
             Some(PageMessage::Reflection { amount: 80 })
         );
+        assert_eq!(
+            parse_page_message(r#"{"type":"soundEnabled","enabled":false}"#),
+            Some(PageMessage::SoundEnabled { enabled: false })
+        );
+        assert_eq!(
+            parse_page_message(r#"{"type":"preset","id":"cabin-a"}"#),
+            Some(PageMessage::Preset { id: Some("cabin-a".into()) })
+        );
+        assert_eq!(parse_page_message(r#"{"type":"preset","id":null}"#), Some(PageMessage::Preset { id: None }));
         assert_eq!(
             parse_page_message(r#"{"type":"bass","cutoff":70}"#),
             Some(PageMessage::Bass { cutoff: 70 })
@@ -2872,7 +2912,15 @@ mod tests {
                 "wallpaper": null,
                 "iconSet": null,
                 "iconStyle": "auto",
-                "equalizer": { "bass": 0, "mid": 0, "treble": 0 },
+                "soundEnabled": true,
+                "preset": null,
+                "equalizer": {
+                    "bass": 0,
+                    "mid": 0,
+                    "treble": 0,
+                    "advanced": false,
+                    "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                },
                 "equalizerCustom": false,
                 "reverb": { "enabled": true, "size": 55, "amount": 32 },
                 "character": "full",
@@ -2881,7 +2929,7 @@ mod tests {
             })
         );
         settings.screen.truck_strip = crate::settings::TruckStrip::Off;
-        settings.sound.equalizer = crate::speakers::Equalizer { bass: -9, mid: 2, treble: 6 };
+        settings.sound.equalizer = crate::speakers::Equalizer { bass: -9, mid: 2, treble: 6, ..Default::default() };
         settings.look.wallpaper = Some("custom:Dusk".into());
         settings.look.icon_set = Some("Retro".into());
         let message: serde_json::Value = serde_json::from_str(&settings_message(&settings)).unwrap();
@@ -2889,11 +2937,25 @@ mod tests {
         assert_eq!(message["wallpaper"], "custom:Dusk");
         assert_eq!(message["iconSet"], "Retro");
         // Within the range, whatever the file says.
-        assert_eq!(message["equalizer"], serde_json::json!({ "bass": -6, "mid": 2, "treble": 6 }));
+        assert_eq!(
+            message["equalizer"],
+            serde_json::json!({
+                "bass": -6,
+                "mid": 2,
+                "treble": 6,
+                "advanced": false,
+                "bands": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            })
+        );
         // The curve is kept whichever is chosen; what plays is it, with Custom only.
         assert_eq!(settings.sound.playing(), crate::speakers::Equalizer::default());
         settings.sound.custom = true;
-        assert_eq!(settings.sound.playing(), crate::speakers::Equalizer { bass: -6, mid: 2, treble: 6 });
+        assert_eq!(settings.sound.playing(), crate::speakers::Equalizer { bass: -6, mid: 2, treble: 6, ..Default::default() });
+        // The EQ switch, and the preset chosen, as they are.
+        settings.sound.enabled = false;
+        settings.sound.preset = Some("cabin-a".into());
+        let message: serde_json::Value = serde_json::from_str(&settings_message(&settings)).unwrap();
+        assert_eq!((&message["soundEnabled"], &message["preset"]), (&serde_json::json!(false), &serde_json::json!("cabin-a")));
     }
 
     #[test]

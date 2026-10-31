@@ -76,25 +76,44 @@ fn serve(request: tiny_http::Request, token: &str) {
         .iter()
         .find(|header| header.field.equiv("Range"))
         .map(|header| header.value.as_str().to_owned());
-    let Ok(client) = reqwest::blocking::Client::builder().timeout(Duration::from_secs(60)).build() else {
+    // Straight out, never through the machine's own proxy: a system proxy (a VPN's, a capture tool's) answers
+    // these CDNs with its own error page, which a media element can't play.
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(60))
+        .build()
+    else {
         let _ = request.respond(Response::empty(StatusCode(502)));
         return;
     };
-    let mut upstream = client
-        .get(&target)
-        .header("Referer", "https://music.163.com/")
-        .header(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-        )
-        .header("Accept", "*/*");
-    if let Some(range) = range {
-        upstream = upstream.header("Range", range);
+    // Each site's own referer: QQ Music's hosts refuse a request that says it comes from NetEase's player.
+    let referer = if target.contains("qq.com") { "https://y.qq.com/" } else { "https://music.163.com/" };
+    let ask = |referer: Option<&str>| {
+        let mut upstream = client
+            .get(&target)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+            )
+            .header("Accept", "*/*");
+        if let Some(referer) = referer {
+            upstream = upstream.header("Referer", referer);
+        }
+        if let Some(range) = range.clone() {
+            upstream = upstream.header("Range", range);
+        }
+        upstream.send()
+    };
+    let Ok(mut response) = ask(Some(referer)) else {
+        let _ = request.respond(Response::empty(StatusCode(502)));
+        return;
+    };
+    // A host that won't have that referer either: asked again without one.
+    if response.status().is_client_error() {
+        if let Ok(again) = ask(None) {
+            response = again;
+        }
     }
-    let Ok(response) = upstream.send() else {
-        let _ = request.respond(Response::empty(StatusCode(502)));
-        return;
-    };
     let status = StatusCode(response.status().as_u16());
     let length = response
         .headers()
@@ -115,15 +134,20 @@ fn serve(request: tiny_http::Request, token: &str) {
     let _ = request.respond(response);
 }
 
-/// The URL asked for (`/m/<token>?u=<percent-encoded https URL>`), when the token is ours and its host is a
-/// NetEase one: nothing else is ever fetched for a page.
+/// The URL asked for (`/m/<token>?u=<percent-encoded URL>`), when the token is ours and its host is a music
+/// CDN's: nothing else is ever fetched for a page. Both schemes are taken for QQ Music's hosts (much of its
+/// sound is served over plain http, which a page at https can't play itself — the proxy is how it's played).
 fn target_of(url: &str, token: &str) -> Option<String> {
     let prefix = format!("/m/{token}?u=");
     let encoded = url.strip_prefix(&prefix)?;
     let target = percent_encoding::percent_decode_str(encoded).decode_utf8().ok()?.into_owned();
-    let host = target.strip_prefix("https://")?.split(['/', '?', '#']).next()?;
-    (host.ends_with(".126.net") || host.ends_with(".163.com") || host == "126.net" || host == "163.com")
-        .then_some(target)
+    let (scheme, rest) = target.split_once("://")?;
+    let host = rest.split(['/', '?', '#']).next()?;
+    let netease = host.ends_with(".126.net") || host.ends_with(".163.com") || host == "126.net" || host == "163.com";
+    let qq = host.ends_with(".qq.com") || host == "qq.com";
+    // NetEase's are https; QQ Music's may be either.
+    let allowed = netease && scheme == "https" || qq && (scheme == "https" || scheme == "http");
+    allowed.then_some(target)
 }
 
 fn header(name: &str, value: &str) -> Header {

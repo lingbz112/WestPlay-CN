@@ -36,6 +36,7 @@ import {
   QueueGlyph,
   RepeatGlyph,
   RepeatOneGlyph,
+  SequenceGlyph,
   ShuffleGlyph,
   SpeakerGlyph,
   StarGlyph,
@@ -270,12 +271,20 @@ export function NowPlaying() {
             </button>
             <button
               type="button"
-              className={playback.repeat !== 'off' ? 'music-button small active' : 'music-button small'}
+              // One setting, not two: shuffle and the loop modes take turns, so this is lit exactly while the
+              // list is played in an order of its own (sequential, all, or the one song).
+              className={playback.shuffle ? 'music-button small' : 'music-button small active'}
               aria-label={words.repeat}
-              aria-pressed={playback.repeat !== 'off'}
+              aria-pressed={!playback.shuffle}
               onClick={cycleRepeat}
             >
-              {playback.repeat === 'one' ? <RepeatOneGlyph size={36} /> : <RepeatGlyph size={36} />}
+              {playback.repeat === 'one' ? (
+                <RepeatOneGlyph size={36} />
+              ) : playback.repeat === 'all' ? (
+                <RepeatGlyph size={36} />
+              ) : (
+                <SequenceGlyph size={36} />
+              )}
             </button>
             <FavoriteButton track={track} />
             {playback.volume !== null && <Volume volume={playback.volume} />}

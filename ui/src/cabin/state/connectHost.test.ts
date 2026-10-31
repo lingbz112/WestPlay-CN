@@ -74,35 +74,70 @@ describe('connectHost', () => {
     vi.stubGlobal('window', { chrome: { webview: webview.bridge } })
     const { connectHost, useCabin } = await import('./store')
     const disconnect = connectHost(() => 0)
-    expect(useCabin.getState().equalizer).toEqual({ bass: 0, mid: 0, treble: 0 })
+    // The three tone bands flat, the fifteen-band curve not playing, and flat too.
+    const flat = () => ({ bass: 0, mid: 0, treble: 0, advanced: false, bands: new Array(15).fill(0) })
+    expect(useCabin.getState().equalizer).toEqual(flat())
 
     // As the host keeps it; whatever it sends, each band whole dB within ±6 (none said: flat).
-    webview.send({ type: 'settings', truckStrip: 'auto', equalizer: { bass: -3, mid: 2.4, treble: 40 } })
-    expect(useCabin.getState().equalizer).toEqual({ bass: -3, mid: 2, treble: 6 })
+    webview.send({
+      type: 'settings',
+      truckStrip: 'auto',
+      equalizer: { ...flat(), bass: -3, mid: 2.4, treble: 40 },
+    })
+    expect(useCabin.getState().equalizer).toEqual({ ...flat(), bass: -3, mid: 2, treble: 6 })
     webview.send({ type: 'settings', truckStrip: 'auto' })
-    expect(useCabin.getState().equalizer).toEqual({ bass: 0, mid: 0, treble: 0 })
+    expect(useCabin.getState().equalizer).toEqual(flat())
 
     expect(useCabin.getState().equalizerCustom).toBe(false)
 
     // A band set: Custom, and the whole curve to the host, to keep and play.
     useCabin.getState().setEqualizerBand('bass', -4)
-    expect(useCabin.getState().equalizer).toEqual({ bass: -4, mid: 0, treble: 0 })
+    expect(useCabin.getState().equalizer).toEqual({ ...flat(), bass: -4 })
     expect(useCabin.getState().equalizerCustom).toBe(true)
-    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: true, bass: -4, mid: 0, treble: 0 })
+    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: true, ...flat(), bass: -4 })
     useCabin.getState().setEqualizerBand('treble', 9)
-    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: true, bass: -4, mid: 0, treble: 6 })
+    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: true, ...flat(), bass: -4, treble: 6 })
+    // Advanced: the fifteen bands play, each handed over as it's set, within ±12 dB.
+    useCabin.getState().setEqualizerAdvanced(true)
+    expect(webview.posted.at(-1)).toEqual({
+      type: 'equalizer',
+      custom: true,
+      ...flat(),
+      advanced: true,
+      bass: -4,
+      treble: 6,
+    })
+    useCabin.getState().setGraphicBand(2, 40)
+    const graphic = [0, 0, 12, ...new Array(12).fill(0)]
+    expect(webview.posted.at(-1)).toEqual({
+      type: 'equalizer',
+      custom: true,
+      ...flat(),
+      advanced: true,
+      bass: -4,
+      treble: 6,
+      bands: graphic,
+    })
+    useCabin.getState().setEqualizerAdvanced(false)
     // Recommended: the curve kept, flat played.
     useCabin.getState().chooseEqualizer(false)
-    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: false, bass: -4, mid: 0, treble: 6 })
+    expect(webview.posted.at(-1)).toEqual({
+      type: 'equalizer',
+      custom: false,
+      ...flat(),
+      bass: -4,
+      treble: 6,
+      bands: graphic,
+    })
     webview.send({
       type: 'settings',
       truckStrip: 'auto',
-      equalizer: { bass: -4, mid: 0, treble: 6 },
+      equalizer: { ...flat(), bass: -4, mid: 0, treble: 6 },
       equalizerCustom: true,
     })
     expect(useCabin.getState().equalizerCustom).toBe(true)
     useCabin.getState().resetEqualizer()
-    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: true, bass: 0, mid: 0, treble: 0 })
+    expect(webview.posted.at(-1)).toEqual({ type: 'equalizer', custom: true, ...flat() })
     disconnect()
   })
 

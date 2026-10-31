@@ -268,7 +268,13 @@ function shelfName(text: ReturnType<typeof useText>, shelf: AppleMusicShelf): st
 function LibraryRowGlyph({ shelf }: { shelf: AppleMusicShelf }) {
   return (
     <span className="am-list-glyph" aria-hidden>
-      {shelf === 'songs' ? <NoteGlyph size={30} /> : shelf === 'podcasts' ? <RadioGlyph size={30} /> : <LibraryGlyph size={30} />}
+      {shelf === 'songs' ? (
+        <NoteGlyph size={30} />
+      ) : shelf === 'podcasts' ? (
+        <RadioGlyph size={30} />
+      ) : (
+        <LibraryGlyph size={30} />
+      )}
     </span>
   )
 }
@@ -662,7 +668,8 @@ function LibraryShelfPage({
       shelf,
       ...(look.sort ? { sort: look.sort } : {}),
       ...(folder ? { folder: folder.id } : {}),
-      language,
+      // These pages' own UI is English or Turkish (a Chinese game gets English there, as YouTube Music does).
+      language: language === 'tr' ? 'tr' : 'en',
     },
     useShownAgain(shown),
   )

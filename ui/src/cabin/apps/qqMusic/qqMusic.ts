@@ -401,6 +401,21 @@ export function playFrom(
       action: 'play',
       ...(context ? { id: context.id } : {}),
       songs: tracks.map((track) => track.id),
+      tracks: tracks.map(
+        ({ id, name, artist, album, albumId, artistId, image, duration, color, explicit, number }) => ({
+          id,
+          name,
+          artist,
+          album,
+          albumId,
+          artistId,
+          image,
+          duration,
+          color,
+          explicit,
+          number,
+        }),
+      ),
       // The song to start with, chosen here (a random one, shuffling): Apple Music starts with it.
       index: start,
       shuffle: shuffled,
@@ -644,17 +659,20 @@ export function seek(seconds: number): void {
 export function toggleShuffle(): void {
   const playback = useQqMusic.getState().playback
   if (!playback) return
-  if (isInHost()) qqMusic({ action: 'shuffle', on: !playback.shuffle })
-  showPlayback({ shuffle: !playback.shuffle })
+  const shuffle = !playback.shuffle
+  // Shuffle and the loop modes are one setting, not two: turning shuffle on leaves the loop (the list plays
+  // through once, in a random order), so the button beside it dims instead of both being lit at once.
+  if (isInHost()) qqMusic({ action: 'shuffle', on: shuffle })
+  showPlayback({ shuffle, repeat: shuffle ? 'off' : playback.repeat })
 }
 
-/** Off, all, the one song: Apple's order. */
+/** In order, round the list, the one song: turned on, the loop takes over the shuffle. */
 export function cycleRepeat(): void {
   const playback = useQqMusic.getState().playback
   if (!playback) return
   const repeat: Repeat = playback.repeat === 'off' ? 'all' : playback.repeat === 'all' ? 'one' : 'off'
   if (isInHost()) qqMusic({ action: 'repeat', mode: repeat })
-  showPlayback({ repeat })
+  showPlayback({ repeat, shuffle: false })
 }
 
 /** The end of a preview song: the next, or the same again on repeat one. */

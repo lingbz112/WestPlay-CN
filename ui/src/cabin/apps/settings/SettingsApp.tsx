@@ -27,7 +27,9 @@ import {
   type CabinCharacter,
   EQUALIZER_BANDS,
   EQUALIZER_MOST,
-  type Equalizer,
+  GRAPHIC_BANDS,
+  GRAPHIC_FREQUENCIES,
+  GRAPHIC_MOST,
   isInHost,
   postToHost,
 } from '../../../shared/host'
@@ -68,6 +70,10 @@ function PageContent({ page }: { page: SettingsPage }) {
       return <NowPlayingPage />
     case 'sound':
       return <SoundPage />
+    case 'presets':
+      return <PresetsPage />
+    case 'soundDetail':
+      return <SoundDetailPage />
     case 'equalizer':
       return <EqualizerPage />
     case 'reverb':
@@ -359,8 +365,58 @@ function NowPlayingPage() {
   )
 }
 
-/** Sound: the Equalizer (more of the sound's settings may come here). */
+/**
+ * The cab's sound: its EQ switch, then — while that's on — the preset playing and the settings that tune it.
+ * Off, the switch is all there is to show: the players shape nothing, so the rest would say nothing.
+ */
 function SoundPage() {
+  const text = useText()
+  const open = useSettings((state) => state.open)
+  const enabled = useCabin((state) => state.soundEnabled)
+  const setEnabled = useCabin((state) => state.setSoundEnabled)
+  const presets = useCabin((state) => state.presets)
+  const preset = useCabin((state) => state.preset)
+  const presetName = presets.find((each) => each.id === preset)?.name
+  return (
+    <Page title={text.settings.sound}>
+      <Group footer={text.settings.eqFooter}>
+        <SwitchRow label={text.settings.eq} on={enabled} onToggle={setEnabled} />
+      </Group>
+      {enabled && (
+        <Group footer={text.settings.soundFooter}>
+          <NavRow label={text.settings.presets} value={presetName} onOpen={() => open('presets')} />
+          <NavRow label={text.settings.soundDetail} onOpen={() => open('soundDetail')} />
+        </Group>
+      )}
+    </Page>
+  )
+}
+
+/** The presets the developer tuned the cabin with, one playing at a time (none yet: nothing to list). */
+function PresetsPage() {
+  const text = useText()
+  const presets = useCabin((state) => state.presets)
+  const preset = useCabin((state) => state.preset)
+  const choose = useCabin((state) => state.setPreset)
+  return (
+    <Page title={text.settings.presets}>
+      <Group footer={text.settings.presetsFooter}>
+        {presets.length === 0 ? (
+          <div className="settings-row">
+            <span className="settings-value">{text.settings.noPresets}</span>
+          </div>
+        ) : (
+          presets.map((each) => (
+            <CheckRow key={each.id} label={each.name} on={preset === each.id} onPick={() => choose(each.id)} />
+          ))
+        )}
+      </Group>
+    </Page>
+  )
+}
+
+/** The sound's own settings: the Equalizer, the cabin's character, its bass and its reverb. */
+function SoundDetailPage() {
   const text = useText()
   const open = useSettings((state) => state.open)
   const custom = useCabin((state) => state.equalizerCustom)
@@ -374,8 +430,8 @@ function SoundPage() {
     full: text.settings.characterFull,
   }
   return (
-    <Page title={text.settings.sound}>
-      <Group footer={text.settings.soundFooter}>
+    <Page title={text.settings.soundDetail}>
+      <Group>
         <NavRow
           label={text.settings.equalizer}
           value={custom ? text.settings.custom : text.settings.recommended}
@@ -386,11 +442,7 @@ function SoundPage() {
           value={characterNames[character]}
           onOpen={() => open('character')}
         />
-        <NavRow
-          label={text.settings.bassManagement}
-          value={`${bass.cutoff} Hz`}
-          onOpen={() => open('bass')}
-        />
+        <NavRow label={text.settings.bassManagement} value={`${bass.cutoff} Hz`} onOpen={() => open('bass')} />
         <NavRow
           label={text.settings.cabinReverb}
           value={reverb.enabled ? `${reverb.amount}%` : text.settings.off}
@@ -474,11 +526,7 @@ function ReverbPage() {
   return (
     <Page title={text.settings.cabinReverb}>
       <Group footer={text.settings.reverbFooter}>
-        <SwitchRow
-          label={text.settings.reverbEnabled}
-          on={reverb.enabled}
-          onToggle={(enabled) => set({ enabled })}
-        />
+        <SwitchRow label={text.settings.reverbEnabled} on={reverb.enabled} onToggle={(enabled) => set({ enabled })} />
       </Group>
       <Group header={text.settings.reverbPresets}>
         {presets.map((preset) => (
@@ -547,16 +595,20 @@ function SettingSlider({
 
 /**
  * The players' tone, as iOS 27's AirPods Equalizer (owner 2026-10-22): Recommended (the speakers as tuned) or
- * Custom (the player's own curve, kept while Recommended plays); the track playing, to hear it by; and the
- * curve over its three bands, Low, Mid and High, each dragged up or down (one for every truck, ±6 dB).
+ * Custom (the player's own curve, kept while Recommended plays); the track playing, to hear it by; and the curve
+ * over its bands, dragged up or down. Advanced swaps the three tone bands (Low, Mid, High, ±`EQUALIZER_MOST`) for
+ * fifteen graphic ones, an ISO two-thirds of an octave each from 25 Hz to 16 kHz (±`GRAPHIC_MOST`); both curves are
+ * kept, so the switch only chooses which plays.
  */
 function EqualizerPage() {
   const text = useText()
   const custom = useCabin((state) => state.equalizerCustom)
+  const advanced = useCabin((state) => state.equalizer.advanced)
   const curve = useCabin((state) => state.equalizer)
   const choose = useCabin((state) => state.chooseEqualizer)
+  const setAdvanced = useCabin((state) => state.setEqualizerAdvanced)
   const reset = useCabin((state) => state.resetEqualizer)
-  const flat = EQUALIZER_BANDS.every((band) => curve[band] === 0)
+  const flat = advanced ? curve.bands.every((db) => db === 0) : EQUALIZER_BANDS.every((band) => curve[band] === 0)
   // The music's spectrum, for the graph's waveform, while the page is open.
   useEffect(() => {
     if (!isInHost()) return
@@ -565,6 +617,9 @@ function EqualizerPage() {
   }, [])
   return (
     <Page title={text.settings.equalizer}>
+      <Group footer={text.settings.advancedFooter}>
+        <SwitchRow label={text.settings.advanced} on={advanced} onToggle={setAdvanced} />
+      </Group>
       <Group footer={text.settings.equalizerFooter}>
         <CheckRow label={text.settings.recommended} on={!custom} onPick={() => choose(false)} />
         <CheckRow label={text.settings.custom} on={custom} onPick={() => choose(true)} />
@@ -626,107 +681,138 @@ function TrackRow() {
   )
 }
 
-/** The graph's drawing, in its own units: its width and height, where the three bands stand across it, and
- * how high a band is from its dB (flat in the middle, ±EQUALIZER_MOST at the top and bottom margins). */
+/** The graph's drawing, in its own units: its width and height, and how high a band is from its dB (flat in the
+ * middle, ±the mode's most at the top and bottom margins). */
 const GRAPH = { width: 600, height: 300, top: 24, bottom: 236 }
-const BAND_AT: Record<keyof Equalizer, number> = { bass: 100, mid: 300, treble: 500 }
-const heightOf = (db: number) =>
-  (GRAPH.top + GRAPH.bottom) / 2 - (db / EQUALIZER_MOST) * ((GRAPH.bottom - GRAPH.top) / 2)
+const BAND_AT: Record<'bass' | 'mid' | 'treble', number> = { bass: 100, mid: 300, treble: 500 }
+const GRAPHIC_AT = GRAPHIC_FREQUENCIES.map((_, i) => 40 + (i * (GRAPH.width - 80)) / (GRAPHIC_BANDS - 1))
+/** The bands whose frequency is written under the graph: 100 Hz, 1 kHz and 10 kHz. */
+const GRAPHIC_NAMED = [3, 8, 13]
+const heightOf = (db: number, most: number) =>
+  (GRAPH.top + GRAPH.bottom) / 2 - (db / most) * ((GRAPH.bottom - GRAPH.top) / 2)
+const hz = (frequency: number) =>
+  frequency >= 1000 ? `${Math.round(frequency / 100) / 10}k` : `${Math.round(frequency)}`
 
 /**
- * The curve over the three bands (Low, Mid, High: each a dashed line down the graph, the middle one's column
- * shaded), as iOS draws it: the music's waveform along the middle and, Custom, a smooth line through each
- * band's point over it. A band follows the finger up and down anywhere in its third of the graph, in whole
- * dB; moving one picks Custom.
+ * The curve over its bands, as iOS draws it: the music's waveform along the middle and, Custom, a line through
+ * each band's point over it — three bands' smoothed, fifteen drawn straight between them. A band follows the
+ * finger up and down anywhere in its share of the graph, in whole dB; moving one picks Custom.
  */
 function EqualizerGraph() {
   const text = useText()
   const custom = useCabin((state) => state.equalizerCustom)
   const curve = useCabin((state) => state.equalizer)
   const setBand = useCabin((state) => state.setEqualizerBand)
+  const setGraphicBand = useCabin((state) => state.setGraphicBand)
   const svg = useRef<SVGSVGElement>(null)
-  const [dragging, setDragging] = useState<keyof Equalizer | null>(null)
+  const [dragging, setDragging] = useState<number | null>(null)
+  const advanced = curve.advanced
+  const most = advanced ? GRAPHIC_MOST : EQUALIZER_MOST
+  const count = advanced ? GRAPHIC_BANDS : 3
+  const at = (band: number) => (advanced ? GRAPHIC_AT[band] : BAND_AT[EQUALIZER_BANDS[band]])
+  const dbAt = (band: number) => (advanced ? (curve.bands[band] ?? 0) : curve[EQUALIZER_BANDS[band]])
   const inGraph = (event: PointerEvent) => {
     const matrix = svg.current?.getScreenCTM()?.inverse()
     if (!matrix) return null
     return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix)
   }
-  const drag = (band: keyof Equalizer, event: PointerEvent) => {
-    const at = inGraph(event)
-    if (!at) return
+  const drag = (band: number, event: PointerEvent) => {
+    const pointer = inGraph(event)
+    if (!pointer) return
     const middle = (GRAPH.top + GRAPH.bottom) / 2
-    const db = Math.round(((middle - at.y) / ((GRAPH.bottom - GRAPH.top) / 2)) * EQUALIZER_MOST)
-    const kept = Math.max(-EQUALIZER_MOST, Math.min(EQUALIZER_MOST, db))
-    if (kept !== curve[band] || !custom) setBand(band, kept)
+    const db = Math.round(((middle - pointer.y) / ((GRAPH.bottom - GRAPH.top) / 2)) * most)
+    const kept = Math.max(-most, Math.min(most, db))
+    if (kept === dbAt(band) && custom) return
+    if (advanced) setGraphicBand(band, kept)
+    else setBand(EQUALIZER_BANDS[band], kept)
   }
-  const shown = custom ? curve : { bass: 0, mid: 0, treble: 0 }
-  const points: [number, number][] = [
-    [0, heightOf(shown.bass)],
-    ...EQUALIZER_BANDS.map((band): [number, number] => [BAND_AT[band], heightOf(shown[band])]),
-    [GRAPH.width, heightOf(shown.treble)],
-  ]
-  const names: Record<keyof Equalizer, string> = {
+  /** The band nearest across the graph (each owns its share of the width). */
+  const bandAt = (x: number) => {
+    if (!advanced) return x < GRAPH.width / 3 ? 0 : x < (2 * GRAPH.width) / 3 ? 1 : 2
+    const at = Math.round(((x - 40) / (GRAPH.width - 80)) * (GRAPHIC_BANDS - 1))
+    return Math.max(0, Math.min(GRAPHIC_BANDS - 1, at))
+  }
+  const names: Record<'bass' | 'mid' | 'treble', string> = {
     bass: text.settings.low,
     mid: text.settings.mid,
     treble: text.settings.high,
   }
+  // What the curve shows: the player's, or flat while Recommended plays.
+  const shown = (band: number) => (custom ? dbAt(band) : 0)
+  const points: [number, number][] = advanced
+    ? GRAPHIC_AT.map((x, band) => [x, heightOf(shown(band), most)])
+    : [
+        [0, heightOf(shown(0), most)],
+        ...EQUALIZER_BANDS.map((_, band): [number, number] => [at(band), heightOf(shown(band), most)]),
+        [GRAPH.width, heightOf(shown(2), most)],
+      ]
   return (
     <svg
       ref={svg}
-      className={dragging ? 'eq-graph dragging' : 'eq-graph'}
+      className={dragging !== null ? 'eq-graph dragging' : 'eq-graph'}
       viewBox={`0 0 ${GRAPH.width} ${GRAPH.height}`}
       role="group"
       aria-label={text.settings.equalizer}
       // Its own drags (the page's drag to scroll leaves them: shell/dragScroll.ts).
       data-own-drag
       onPointerDown={(event) => {
-        const at = inGraph(event)
-        if (!at) return
-        const band: keyof Equalizer = at.x < GRAPH.width / 3 ? 'bass' : at.x < (2 * GRAPH.width) / 3 ? 'mid' : 'treble'
+        const pointer = inGraph(event)
+        if (!pointer) return
+        const band = bandAt(pointer.x)
         event.currentTarget.setPointerCapture(event.pointerId)
         setDragging(band)
         drag(band, event)
       }}
-      onPointerMove={(event) => dragging && drag(dragging, event)}
+      onPointerMove={(event) => dragging !== null && drag(dragging, event)}
       onPointerUp={() => setDragging(null)}
       onPointerCancel={() => setDragging(null)}
     >
-      <defs>
-        <linearGradient id="eq-middle-column" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" className="eq-column-edge" />
-          <stop offset="0.5" className="eq-column-middle" />
-          <stop offset="1" className="eq-column-edge" />
-        </linearGradient>
-      </defs>
-      <rect x={200} y={0} width={200} height={GRAPH.bottom + 14} fill="url(#eq-middle-column)" />
-      {EQUALIZER_BANDS.map((band) => (
-        <line key={band} className="eq-band-line" x1={BAND_AT[band]} x2={BAND_AT[band]} y1={8} y2={GRAPH.bottom + 6} />
+      {!advanced && (
+        <defs>
+          <linearGradient id="eq-middle-column" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" className="eq-column-edge" />
+            <stop offset="0.5" className="eq-column-middle" />
+            <stop offset="1" className="eq-column-edge" />
+          </linearGradient>
+        </defs>
+      )}
+      {!advanced && <rect x={200} y={0} width={200} height={GRAPH.bottom + 14} fill="url(#eq-middle-column)" />}
+      {(advanced ? GRAPHIC_NAMED : [0, 1, 2]).map((band) => (
+        <line key={band} className="eq-band-line" x1={at(band)} x2={at(band)} y1={8} y2={GRAPH.bottom + 6} />
       ))}
       <Waveform />
-      {custom && (
-        <>
+      {custom &&
+        (advanced ? (
+          <polyline className="eq-curve" points={points.map(([x, y]) => `${x},${y}`).join(' ')} />
+        ) : (
           <path className="eq-curve" d={smoothThrough(points)} />
-          {EQUALIZER_BANDS.map((band) => (
-            <circle
-              key={band}
-              className={dragging === band ? 'eq-point dragged' : 'eq-point'}
-              cx={BAND_AT[band]}
-              cy={heightOf(curve[band])}
-              r={14}
-              role="slider"
-              aria-label={names[band]}
-              aria-valuemin={-EQUALIZER_MOST}
-              aria-valuemax={EQUALIZER_MOST}
-              aria-valuenow={curve[band]}
-            />
+        ))}
+      {custom &&
+        Array.from({ length: count }, (_, band) => (
+          <circle
+            key={band}
+            className={dragging === band ? 'eq-point dragged' : 'eq-point'}
+            cx={at(band)}
+            cy={heightOf(dbAt(band), most)}
+            r={advanced ? 10 : 14}
+            role="slider"
+            aria-label={advanced ? `${hz(GRAPHIC_FREQUENCIES[band])} Hz` : names[EQUALIZER_BANDS[band]]}
+            aria-valuemin={-most}
+            aria-valuemax={most}
+            aria-valuenow={dbAt(band)}
+          />
+        ))}
+      {advanced
+        ? GRAPHIC_NAMED.map((band) => (
+            <text key={band} className="eq-band-name" x={GRAPHIC_AT[band]} y={GRAPH.height - 16}>
+              {hz(GRAPHIC_FREQUENCIES[band])}
+            </text>
+          ))
+        : EQUALIZER_BANDS.map((band) => (
+            <text key={band} className="eq-band-name" x={BAND_AT[band]} y={GRAPH.height - 16}>
+              {names[band]}
+            </text>
           ))}
-        </>
-      )}
-      {EQUALIZER_BANDS.map((band) => (
-        <text key={band} className="eq-band-name" x={BAND_AT[band]} y={GRAPH.height - 16}>
-          {names[band]}
-        </text>
-      ))}
     </svg>
   )
 }
@@ -751,7 +837,7 @@ function Waveform() {
           <rect
             key={i}
             x={WAVEFORM.thick / 2 + i * step}
-            y={heightOf(0) - tall / 2}
+            y={heightOf(0, EQUALIZER_MOST) - tall / 2}
             width={WAVEFORM.thick}
             height={tall}
             rx={WAVEFORM.thick / 2}

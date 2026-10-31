@@ -573,17 +573,20 @@ export function seek(seconds: number): void {
 export function toggleShuffle(): void {
   const playback = useNeteaseMusic.getState().playback
   if (!playback) return
-  if (isInHost()) neteaseMusic({ action: 'shuffle', on: !playback.shuffle })
-  showPlayback({ shuffle: !playback.shuffle })
+  const shuffle = !playback.shuffle
+  // Shuffle and the loop modes are one setting, not two: turning shuffle on leaves the loop (the list plays
+  // through once, in a random order), so the button beside it dims instead of both being lit at once.
+  if (isInHost()) neteaseMusic({ action: 'shuffle', on: shuffle })
+  showPlayback({ shuffle, repeat: shuffle ? 'off' : playback.repeat })
 }
 
-/** Off, all, the one song: Apple's order. */
+/** In order, round the list, the one song: turned on, the loop takes over the shuffle. */
 export function cycleRepeat(): void {
   const playback = useNeteaseMusic.getState().playback
   if (!playback) return
   const repeat: Repeat = playback.repeat === 'off' ? 'all' : playback.repeat === 'all' ? 'one' : 'off'
   if (isInHost()) neteaseMusic({ action: 'repeat', mode: repeat })
-  showPlayback({ repeat })
+  showPlayback({ repeat, shuffle: false })
 }
 
 /** The end of a preview song: the next, or the same again on repeat one. */
@@ -602,7 +605,9 @@ export function receivePlayback(playback: AppleMusicPlayback | null): void {
     const playbackNow = useNeteaseMusic.getState().playback
     const now = performance.now()
     useNeteaseMusic.setState({
-      playback: playbackNow ? { ...playbackNow, playing: false, loading: false, position: positionOf(playbackNow, now), at: now } : null,
+      playback: playbackNow
+        ? { ...playbackNow, playing: false, loading: false, position: positionOf(playbackNow, now), at: now }
+        : null,
       unplayed: useNeteaseMusic.getState().unplayed + 1,
     })
     return

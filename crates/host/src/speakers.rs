@@ -1083,16 +1083,36 @@ pub struct Equalizer {
     pub bass: i8,
     pub mid: i8,
     pub treble: i8,
+    /// Advanced on (Settings › Sound Settings › Equalizer): the graphic curve plays instead of the three bands.
+    pub advanced: bool,
+    /// The graphic curve: an ISO two-thirds octave each, [`GRAPHIC_LOWEST`] Hz to [`GRAPHIC_HIGHEST`] Hz, in dB
+    /// each. Not played while `advanced` is off.
+    pub bands: [i8; GRAPHIC_BANDS],
 }
+
+/// How many bands the graphic curve has (cab_sound.js places them; the page's graph draws them).
+pub const GRAPHIC_BANDS: usize = 15;
+/// The graphic curve's lowest and highest bands, Hz: the ends of the 15, two-thirds of an octave apart.
+pub const GRAPHIC_LOWEST: f32 = 25.0;
+pub const GRAPHIC_HIGHEST: f32 = 16000.0;
 
 impl Equalizer {
     /// How far each band goes, dB (owner 2026-10-22: a car stereo's tone range).
     pub const MOST: i8 = 6;
+    /// How far a graphic band goes, dB: a graphic equaliser needs more than a tone control's three steps.
+    pub const GRAPHIC_MOST: i8 = 12;
 
-    /// Each band within [`Equalizer::MOST`] either way.
+    /// Each band within its range either way; the graphic curve's bands each within [`Self::GRAPHIC_MOST`].
     pub fn clamped(self) -> Self {
         let clamp = |db: i8| db.clamp(-Self::MOST, Self::MOST);
-        Self { bass: clamp(self.bass), mid: clamp(self.mid), treble: clamp(self.treble) }
+        let bands = self.bands.map(|db| db.clamp(-Self::GRAPHIC_MOST, Self::GRAPHIC_MOST));
+        Self {
+            bass: clamp(self.bass),
+            mid: clamp(self.mid),
+            treble: clamp(self.treble),
+            advanced: self.advanced,
+            bands,
+        }
     }
 }
 
@@ -1135,6 +1155,10 @@ pub enum CabinCharacter {
     /// The cabin curve and early reflections together; diffuse reverb remains independently controlled.
     #[default]
     Full,
+    /// Everything the cabin does off (Settings › Sound's EQ switch): the players play the truck's speakers as
+    /// they're placed and nothing else, with no tone, cabin, space or bass shaping at all. Not one of the four
+    /// steps the Character page offers: the switch, not a choice of character.
+    Off,
 }
 
 /// Strength of the cabin's discrete early reflections (`0`: none, `100`: the modelled level).
@@ -1326,9 +1350,22 @@ mod tests {
 
     #[test]
     fn keeps_the_tone_within_a_car_stereos_range() {
-        let wild = Equalizer { bass: -40, mid: 3, treble: 100 };
-        assert_eq!(wild.clamped(), Equalizer { bass: -6, mid: 3, treble: 6 });
+        let wild = Equalizer { bass: -40, mid: 3, treble: 100, ..Default::default() };
+        assert_eq!(wild.clamped(), Equalizer { bass: -6, mid: 3, treble: 6, ..Default::default() });
         assert_eq!(Equalizer::default().clamped(), Equalizer::default());
+    }
+
+    #[test]
+    fn gives_the_graphic_curve_more_range_than_the_tone() {
+        let wild = Equalizer { advanced: true, bands: [40; GRAPHIC_BANDS], ..Default::default() };
+        let kept = wild.clamped();
+        assert!(kept.advanced);
+        assert_eq!(kept.bands, [Equalizer::GRAPHIC_MOST; GRAPHIC_BANDS]);
+        let low = Equalizer { bands: [-40; GRAPHIC_BANDS], ..Default::default() };
+        assert_eq!(low.clamped().bands, [-Equalizer::GRAPHIC_MOST; GRAPHIC_BANDS]);
+        // Not advanced by default (the three bands play), and its bands still flat.
+        assert!(!Equalizer::default().advanced);
+        assert_eq!(Equalizer::default().bands, [0; GRAPHIC_BANDS]);
     }
 
     #[test]

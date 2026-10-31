@@ -38,9 +38,17 @@ pub struct Settings {
 /// The sound the players play: its tone (the cab's Settings › Equalizer), the same in every truck. As iOS's
 /// AirPods have it (owner 2026-10-22): Recommended, the speakers as tuned, or Custom, the player's own curve
 /// (kept while Recommended plays).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SoundSettings {
+    /// The EQ switch (Settings › Sound's first row): on, every player's sound is shaped as the settings below
+    /// say; off, it plays from the truck's speakers as they're placed and nothing else.
+    #[serde(deserialize_with = "lenient")]
+    pub enabled: bool,
+    /// The preset whose cabin sound plays (`presets::Preset`'s id), tuned in the developer window; none, the
+    /// settings below as they are.
+    #[serde(deserialize_with = "lenient")]
+    pub preset: Option<String>,
     /// The player's own curve.
     #[serde(deserialize_with = "lenient")]
     pub equalizer: crate::speakers::Equalizer,
@@ -59,6 +67,21 @@ pub struct SoundSettings {
     /// Always-on bass management's mono crossover.
     #[serde(deserialize_with = "lenient")]
     pub bass: crate::speakers::BassManagement,
+}
+
+impl Default for SoundSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            preset: None,
+            equalizer: Default::default(),
+            custom: false,
+            reverb: Default::default(),
+            character: Default::default(),
+            reflection: Default::default(),
+            bass: Default::default(),
+        }
+    }
 }
 
 impl SoundSettings {
@@ -162,7 +185,7 @@ impl KeyCode {
             if scancode == 0 {
                 return None;
             }
-            let extended = i32::from(scancode & 0xff00 == 0xe000);
+            let extended = i32::from((scancode & 0xff00) == 0xe000 || is_extended(code));
             let lparam = ((scancode & 0xff) as i32) << 16 | extended << 24;
             let mut name = [0u16; 64];
             let length = usize::try_from(GetKeyNameTextW(lparam, &mut name)).ok().filter(|&n| n > 0)?;
@@ -186,6 +209,31 @@ impl Default for KeyCode {
     fn default() -> Self {
         Self::LEFT_ALT
     }
+}
+
+/// Whether a key is one the keyboard sends extended (its `lParam`'s bit 24 set) while Windows' own
+/// virtual-key-to-scancode table leaves the flag off: the navigation cluster, which shares its scan codes with
+/// the keypad's keys — read without the flag, Right is the keypad's 6 ("Num 6"), and the game's own arrow
+/// bindings would show as the keypad's. (Right Ctrl and Alt already come flagged.)
+fn is_extended(code: u32) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        VK_DELETE, VK_DOWN, VK_END, VK_HOME, VK_INSERT, VK_LEFT, VK_NEXT, VK_NUMLOCK, VK_PRIOR, VK_RIGHT, VK_UP,
+    };
+    [
+        VK_INSERT,
+        VK_DELETE,
+        VK_HOME,
+        VK_END,
+        VK_PRIOR,
+        VK_NEXT,
+        VK_LEFT,
+        VK_RIGHT,
+        VK_UP,
+        VK_DOWN,
+        VK_NUMLOCK,
+    ]
+    .iter()
+    .any(|key| u32::from(key.0) == code)
 }
 
 impl From<KeyCode> for u32 {
@@ -462,6 +510,17 @@ mod tests {
     }
 
     #[test]
+    fn names_the_navigation_keys_as_themselves_not_the_keypads() {
+        // The navigation cluster shares the keypad's scan codes: read without the extended flag, Right came out
+        // as the keypad's 6 ("Num 6"). Its own key is still the keypad's.
+        for code in [0x25, 0x26, 0x27, 0x28, 0x2e, 0x24, 0x23, 0x21, 0x22] {
+            let name = KeyCode::name(code).unwrap_or_default();
+            assert!(!name.starts_with("Num"), "{code:#x} read as {name}");
+        }
+        assert!(KeyCode::name(0x66).unwrap_or_default().contains('6'));
+    }
+
+    #[test]
     fn round_trips_through_the_file_format() {
         let settings = Settings {
             interaction: InteractionSettings {
@@ -481,7 +540,9 @@ mod tests {
             },
             graphics: GraphicsSettings { gpu: Some("10de:2702:00000000:161".into()) },
             sound: SoundSettings {
-                equalizer: crate::speakers::Equalizer { bass: -3, mid: 1, treble: 2 },
+                enabled: true,
+                preset: Some("cabin-a".into()),
+                equalizer: crate::speakers::Equalizer { bass: -3, mid: 1, treble: 2, ..Default::default() },
                 custom: true,
                 reverb: crate::speakers::Reverb { enabled: true, size: 72, amount: 38 },
                 character: crate::speakers::CabinCharacter::Full,
@@ -496,6 +557,8 @@ mod tests {
         assert!(json.contains("\"truckStrip\": \"off\""), "{json}");
         let saved: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(saved["sound"]["reflection"]["amount"], 80, "{json}");
+        assert_eq!(saved["sound"]["enabled"], true, "{json}");
+        assert_eq!(saved["sound"]["preset"], "cabin-a", "{json}");
         assert_eq!(saved["sound"]["bass"]["cutoff"], 70, "{json}");
         assert_eq!(parse(&json).unwrap(), settings);
     }

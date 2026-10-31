@@ -9,6 +9,13 @@
   const role = window.__westplayRole === "player" ? "player" : "browse";
   const post = (message) =>
     window.chrome?.webview?.postMessage({ role, ...message });
+  // A line for the host's log (never louder than a line, and never able to throw: the log must not be the
+  // reason something fails).
+  const log = (line) => {
+    try {
+      post({ log: String(line).slice(0, 400) });
+    } catch {}
+  };
   const navigate = (url) => {
     // The host stops Chromium presenting these hidden pages while they are idle. A full document
     // navigation briefly needs its compositor; the new page asks for it to be hidden after Ready.
@@ -111,29 +118,6 @@
     },
   });
 
-  // QMA (QQ's audio engine) renders into Web Audio and joins its current output node to the destination.
-  // Remember the newest one: songs and server-controlled radio routes can replace it without replacing the
-  // page or its AudioContext.
-  const qmaOutput = { node: null, context: null };
-  window.__westplayQmaOutput = qmaOutput;
-  try {
-    const connect = AudioNode.prototype.connect;
-    AudioNode.prototype.connect = function (destination, ...rest) {
-      if (
-        destination === this.context?.destination &&
-        !this.__westplayCabSoundNode &&
-        qmaOutput.node !== this
-      ) {
-        qmaOutput.node = this;
-        qmaOutput.context = this.context;
-        post({
-          log: `QMA audio output found (${this.constructor?.name || "AudioNode"})`,
-        });
-      }
-      return connect.call(this, destination, ...rest);
-    };
-  } catch {}
-
   const waitFor = async (read, timeout = 12000) => {
     const until = Date.now() + timeout;
     while (Date.now() < until) {
@@ -204,35 +188,12 @@
     return Boolean(words && !/登录|登入|sign in/i.test(words));
   };
 
-  const playing = () => {
-    const audio = findAudio();
-    if (audio) return !audio.paused && !audio.ended;
-    const button = one(".btn_big_play");
-    if (!button) return false;
-    const words = norm(button.textContent);
-    return /暂停|pause/i.test(words) || /pause/i.test(button.className);
-  };
-
   const avatar = () => {
     const image = one(
       '.top_login__link img, .player_login__link img, [class*="avatar"] img',
     );
     const src = image?.currentSrc || image?.src || "";
     return src.startsWith("https://") && !src.startsWith("data:") ? src : null;
-  };
-
-  let lastState = "";
-  const sayState = () => {
-    const state = {
-      signedIn: signedIn(),
-      playing: playing(),
-      avatar: avatar(),
-    };
-    const text = JSON.stringify(state);
-    if (text !== lastState) {
-      lastState = text;
-      post({ state });
-    }
   };
 
   // --- Pages -----------------------------------------------------------------------------------------------
@@ -578,8 +539,8 @@
   const coverOfSong = (song) => {
     const raw =
       song?.coverUrl ||
-      (song?.album?.pmid
-        ? `//y.qq.com/music/photo_new/T002R300x300M000${song.album.pmid}.jpg?max_age=2592000`
+      ((song?.album?.pmid ?? song?.album?.mid)
+        ? `//y.qq.com/music/photo_new/T002R300x300M000${song.album.pmid ?? song.album.mid}.jpg?max_age=2592000`
         : "");
     if (!raw) return DEFAULT_IMAGE;
     const url = raw.startsWith("//") ? `https:${raw}` : raw;
@@ -761,6 +722,49 @@
     const collectionKind = parts[1] === "album" ? "album" : "playlist";
     const collectionId = parts.slice(2).join(":");
     if (!collectionId) return null;
+    // A station is not a playlist: its songs come from the radio API, a batch at a time (and each call is
+    // fresh, which is the point of a radar).
+    if (parts[1] === "radio" || parts[1] === "station") {
+      try {
+        const data = await api("mb_track_radio_svr", "get_radio_track", {
+          id: Number(collectionId) || collectionId,
+          num: 30,
+          firstplay: 1,
+        });
+        const rows = Array.isArray(data.tracks) ? data.tracks : [];
+        const songs = rows
+          .map((raw) => {
+            const mid = String(raw?.mid ?? "");
+            const track = mid ? trackFromApi(raw) : null;
+            if (track) byMid.set(mid, track);
+            return track;
+          })
+          .filter(Boolean);
+        if (songs.length) {
+          const item = {
+            id: `qq:radio:${collectionId}`,
+            kind: "station",
+            name: norm(data.name) || "QQ 音乐电台",
+            by: norm(data.slogan),
+            note: norm(data.slogan),
+            image: imageUrl(data.bg_pic_url) ?? DEFAULT_IMAGE,
+            wide: null,
+            color: COLOR,
+            explicit: false,
+            live: false,
+          };
+          return {
+            item,
+            description: norm(data.slogan),
+            genre: "",
+            year: null,
+            tracks: songs.slice(0, 12),
+          };
+        }
+      } catch (error) {
+        log(`radio ${collectionId}: ${error}`);
+      }
+    }
     if (collectionKind === "playlist") {
       try {
         const request = await requestApi();
@@ -1026,6 +1030,48 @@
    * renders only ten songs and replaces its pager with a "download the client" advert. The API returns the
    * real total and pages, so all 641 liked songs are available without bouncing the browser between routes.
    */
+  // The real 我喜欢 as the account's own list (what the official client shows). Both the library shelf and the
+  // favourite star read from this one cache; a confirmed write clears it so the next read refetches.
+  let liked = null;
+  let likedLoading = null;
+  const loadLiked = async () => {
+    if (liked) return liked;
+    likedLoading ??= (async () => {
+      const profile = await profileData();
+      if (!profile?.pageuin) return null;
+      const api = await reportApi();
+      const rows = [];
+      let total = Infinity;
+      for (
+        let start = 0, page = 0;
+        start < total && page < 12;
+        start += 100, page++
+      ) {
+        const part = await within(
+          api.h(["like", "song"], profile, { start, pageSize: 100 }),
+          15000,
+          "QQ Music liked songs timed out",
+        );
+        const pageRows = part?.songlist ?? [];
+        rows.push(...pageRows);
+        total = Number(part?.totalNum);
+        if (!Number.isFinite(total) || total <= 0)
+          total = pageRows.length < 100 ? start + pageRows.length : start + pageRows.length + 1;
+        if (!pageRows.length || pageRows.length < 100) break;
+      }
+      liked = { rows, total: rows.length, mids: new Set(rows.map((row) => String(row?.mid ?? "")).filter(Boolean)) };
+      return liked;
+    })()
+      .catch((error) => {
+        log(`liked list: ${error}`);
+        return null;
+      })
+      .finally(() => {
+        likedLoading = null;
+      });
+    return likedLoading;
+  };
+
   const libraryAnswer = async (shelf) => {
     if (!signedIn()) return { items: [], songs: [], sorts: [], sort: null };
     const profile = await profileData();
@@ -1056,15 +1102,9 @@
       return { rows, total };
     };
     if (shelf === "songs") {
-      const { rows, total } = await pages(
-        (start, pageSize) =>
-          api.h(["like", "song"], profile, { start, pageSize }),
-        "songlist",
-        "totalNum",
-      );
-      post({
-        log: `library liked songs ${rows.length}/${Number.isFinite(total) ? total : "?"}`,
-      });
+      const list = await loadLiked();
+      const rows = list?.rows ?? [];
+      post({ log: `library liked songs ${rows.length}` });
       return {
         items: [],
         songs: tracksFromInitial({ songlist: rows }),
@@ -1305,754 +1345,847 @@
     }
   };
 
-  // --- Playing a song from a page ---------------------------------------------------------------------------
-  const PENDING = "westplay.qq.pending";
-  const remember = (command) =>
-    sessionStorage.setItem(
-      PENDING,
-      JSON.stringify({ ...command, at: Date.now() }),
-    );
-  const forget = () => sessionStorage.removeItem(PENDING);
-  const pending = () => {
+  // --- Playing: WestPlay's own player, from the site's own sound -------------------------------------------
+  //
+  // QQ Music's own web player is a whole application: it renders into Web Audio (QMA), reloads itself to take a
+  // new queue, and saves its volume badly (the first song after a load comes back at full). So this page is only
+  // the data here — songs from the site's own APIs, their sound from `vkey.GetVkeyServer` — and WestPlay plays
+  // it in an <audio> of its own: the volume, the place in the song and the truck's speakers are all ours, and
+  // nothing of the site's player is loaded at all.
+
+  const FCG = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+  const guid = String(1000000 + Math.floor(Math.random() * 8999999));
+
+  /** A `musicu.fcg` call: the site's own JSON API, this page's cookies with it. `uin`: whose account, when the
+   * caller knows it better than the cookie does (the writes need the real one). */
+  const api = async (module, method, param, uin) => {
+    const body = {
+      comm: { ct: 24, cv: 0, format: "json", uin: uin || cookie("uin") || "0", guid },
+      req_0: { module, method, param },
+    };
+    let response;
     try {
-      const value = JSON.parse(sessionStorage.getItem(PENDING) || "null");
-      return value && Date.now() - value.at < 120000 ? value : null;
-    } catch {
+      response = await fetch(FCG, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      // The GET form, for a host that won't take the POST cross-origin.
+      const url = `${FCG}?format=json&data=${encodeURIComponent(JSON.stringify(body))}`;
+      response = await fetch(url, { credentials: "include" });
+    }
+    if (!response.ok) throw new Error(`http ${response.status}`);
+    const answer = await response.json();
+    const data = answer?.req_0?.data;
+    if (!data) throw new Error(`musicu: ${answer?.req_0?.code ?? answer?.code ?? "no data"}`);
+    return data;
+  };
+
+  /** Several `musicu.fcg` calls in one request (each its own `req_i`): the per-song ones, which the site only
+   * answers one song at a time. */
+  const apiMany = async (requests) => {
+    const body = {
+      comm: { ct: 24, cv: 0, format: "json", uin: cookie("uin") || "0", guid },
+    };
+    requests.forEach((request, i) => {
+      body[`req_${i}`] = request;
+    });
+    let response;
+    try {
+      response = await fetch(FCG, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      const url = `${FCG}?format=json&data=${encodeURIComponent(JSON.stringify(body))}`;
+      response = await fetch(url, { credentials: "include" });
+    }
+    if (!response.ok) throw new Error(`http ${response.status}`);
+    const answer = await response.json();
+    return requests.map((_, i) => answer?.[`req_${i}`]?.data ?? null);
+  };
+
+  const byMid = new Map();
+  // Each song's own file information: the media mid its sound is named after, and which qualities it has.
+  const details = new Map();
+  const rememberFile = (raw) => {
+    const mid = String(raw?.mid ?? raw?.songmid ?? "");
+    if (!mid) return null;
+    const file = raw.file ?? {};
+    const detail = {
+      songId: Number(raw.id) || 0,
+      mediaMid: file.media_mid || null,
+      best: Number(file.size_320mp3) || 0,
+      mp3: Number(file.size_128mp3) || 0,
+      aac: Number(file.size_96aac) || 0,
+      aacLow: Number(file.size_48aac) || 0,
+    };
+    details.set(mid, detail);
+    return detail;
+  };
+  /** That information, from the site's own detail call when it isn't known yet (which also names the song). */
+  const detailOf = async (mid) => {
+    if (details.has(mid)) return details.get(mid);
+    try {
+      const data = await api("music.pf_song_detail_svr", "get_song_detail_yqq", { song_mid: mid });
+      const raw = data?.track_info;
+      if (!raw) return null;
+      const track = trackFromApi(raw);
+      if (track) byMid.set(mid, track);
+      return rememberFile(raw);
+    } catch (error) {
+      log(`detail ${mid}: ${error}`);
       return null;
     }
   };
-  const clickPlay = () => {
-    const button = one(
-      '.mod_btn_green, .mod_cover__icon_play, [class*="list_menu__play"], [title="播放"]',
-    );
-    if (button) {
-      button.click();
-      return true;
-    }
-    return false;
-  };
-  const QUEUE_META = "westplay.qq.queue.v1";
-  const rawForIds = async (ids) => {
-    const wanted = ids.map((id) => String(id).split(":").pop()).filter(Boolean);
-    const api = await tracksApi();
-    const found = [];
-    for (let start = 0; start < wanted.length; start += 100) {
-      const mids = wanted.slice(start, start + 100);
-      const part =
-        (await api.m(
-          mids,
-          mids.map(() => 0),
-        )) ?? [];
-      found.push(...part);
-    }
-    const byMid = new Map(found.map((song) => [song.mid, song]));
-    return wanted.map((mid) => byMid.get(mid)).filter(Boolean);
-  };
-  const saveQueue = (songs, index, context) => {
-    const value = {
-      songList: songs,
-      isAdd: true,
-      isPlay: true,
-      index: Math.max(0, Math.min(songs.length - 1, Number(index) || 0)),
-      time: Date.now(),
-      uin: "",
-      isvip: false,
+
+  const trackFromApi = (raw) => {
+    const mid = String(raw.mid ?? raw.songmid ?? "");
+    if (!mid) return null;
+    const singers = (raw.singer ?? raw.singers ?? []).map((each) => each.name).filter(Boolean);
+    if (raw.file) rememberFile(raw);
+    return {
+      id: `qq:track:${mid}`,
+      name: norm(raw.name ?? raw.title ?? mid),
+      artist: singers.join(" / "),
+      album: norm(raw.album?.name ?? raw.albumname ?? ""),
+      albumId: raw.album?.mid ? `qq:album:${raw.album.mid}` : null,
+      artistId: raw.singer?.[0]?.mid ? `qq:artist:${raw.singer[0].mid}` : null,
+      image: coverOfSong(raw) ?? DEFAULT_IMAGE,
+      color: COLOR,
+      duration: Number(raw.interval) || 0,
+      explicit: Boolean(raw.ov ?? raw.pay?.payplay === 0),
+      number: null,
     };
-    localStorage.setItem(
-      "playSongData",
-      JSON.stringify({ value, expire: Date.now() + 31536000000 }),
-    );
-    localStorage.setItem(
-      QUEUE_META,
-      JSON.stringify({
-        context: context ?? null,
-        at: Date.now(),
-        count: songs.length,
-      }),
-    );
   };
-  const queue = async (command) => {
-    const wanted = command?.id ?? command?.songs?.[command?.index ?? 0] ?? null;
-    if (!wanted) return;
-    const parts = String(wanted).split(":");
-    if (parts[0] !== "qq") return;
-    const context = command.name
-      ? {
-          id: command.id ?? `qq:queue:${Date.now()}`,
-          name: command.name,
-          kind: command.kind || "playlist",
+
+  /** The songs behind these mids, from the site's own track API (one call, kept for the queue). */
+  const tracksOf = async (mids) => {
+    const unknown = mids.map(String).filter((mid) => mid && !byMid.has(mid));
+    for (let at = 0; at < unknown.length; at += 50) {
+      const batch = unknown.slice(at, at + 50);
+      try {
+        const answers = await apiMany(
+          batch.map((mid) => ({
+            module: "music.pf_song_detail_svr",
+            method: "get_song_detail_yqq",
+            param: { song_mid: mid },
+          })),
+        );
+        answers.forEach((data, i) => {
+          const raw = data?.track_info;
+          const track = raw ? trackFromApi(raw) : null;
+          if (track) byMid.set(batch[i], track);
+        });
+      } catch (error) {
+        log(`tracks: ${error}`);
+      }
+    }
+    // One the site has nothing for: still playable, named by its mid.
+    for (const mid of mids.map(String)) {
+      if (!byMid.has(mid)) {
+        byMid.set(mid, {
+          id: `qq:track:${mid}`,
+          name: mid,
+          artist: "",
+          album: "",
+          albumId: null,
+          artistId: null,
+          image: DEFAULT_IMAGE,
+          color: COLOR,
+          duration: 0,
+          explicit: false,
+          number: null,
+        });
+      }
+    }
+    return mids.map((mid) => byMid.get(String(mid))).filter(Boolean);
+  };
+
+  let audio = null;
+  let proxy = null;
+  const queue = { ids: [], index: 0, context: null, shuffle: false, repeat: "off", urls: new Map() };
+  let loading = false;
+  let lastPosition = 0;
+  // Songs played a second time through the proxy after a host refused them, and songs in a row that failed.
+  const retried = new Set();
+  let failures = 0;
+
+  const VOLUME_KEY = "westplay.qq.volume";
+  let volume = (() => {
+    try {
+      const raw = localStorage.getItem(VOLUME_KEY);
+      const saved = Number(raw);
+      return raw !== null && Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.8;
+    } catch {
+      return 0.8;
+    }
+  })();
+
+  // The hosts that won't play directly (plain http, or a response this page can't take into its sound): every
+  // song from one goes through WestPlay's proxy from then on.
+  const proxiedHosts = new Set();
+  const proxiedUrl = (raw) =>
+    `http://127.0.0.1:${proxy.port}/m/${proxy.token}?u=${encodeURIComponent(raw)}`;
+  // The quality each song is tried at (a file that isn't there fails, and the next one is asked for).
+  const qualities = new Map();
+
+  /** What to ask the site for, best first: 320k mp3, 128k mp3, then the AACs — named after the song's media
+   * mid, and only the qualities it has (a file that doesn't exist is a 404, which a player hears as nothing). */
+  const filesOf = async (mid) => {
+    const detail = await detailOf(mid);
+    const name = detail?.mediaMid || mid;
+    const list = [];
+    if (!detail || detail.best) list.push(["M800", name, ".mp3"]);
+    if (!detail || detail.mp3) list.push(["M500", name, ".mp3"]);
+    if (!detail || detail.aac) list.push(["C400", name, ".m4a"]);
+    if (!detail || detail.aacLow) list.push(["C600", name, ".m4a"]);
+    if (list.length === 0) list.push(["M500", name, ".mp3"]);
+    return list;
+  };
+
+  /** The sound of a song by its mid: the site's vkey, a URL to play it from. Tried directly (https) first; a
+   * host that refuses is played through WestPlay's proxy instead, and remembered as one. */
+  const urlOf = async (mid) => {
+    const known = queue.urls.get(mid);
+    if (known && Date.now() < known.expires) return known;
+    const files = await filesOf(mid);
+    let found = null;
+    for (let at = qualities.get(mid) ?? 0; at < files.length; at++) {
+      const [prefix, name, suffix] = files[at];
+      try {
+        const data = await api("vkey.GetVkeyServer", "CgiGetVkey", {
+          guid,
+          songmid: [mid],
+          songtype: [0],
+          uin: cookie("uin") || "0",
+          loginflag: 1,
+          platform: "20",
+          filename: [`${prefix}${name}${suffix}`],
+        });
+        const info = (data.midurlinfo ?? [])[0];
+        const purl = info?.purl;
+        if (!purl || info.result !== 0) {
+          log(`vkey ${prefix} ${mid}: result ${info?.result ?? "?"}`);
+          continue;
         }
+        const sip = (data.sip ?? []).find((each) => /^https?:/.test(each)) ?? data.sip?.[0] ?? "";
+        const raw = `${sip}${purl}`;
+        const host = raw.split("/")[2] ?? "";
+        const through = Boolean(proxy && proxiedHosts.has(host));
+        found = {
+          url: through ? proxiedUrl(raw) : raw.replace(/^http:/, "https:"),
+          cors: true,
+          host,
+          raw,
+          more: at + 1 < files.length,
+          expires: Date.now() + 15 * 60 * 1000,
+        };
+        log(`vkey ${prefix} ${mid}: ${through ? "proxy" : "direct"} ${host}, ${name}`);
+        break;
+      } catch (error) {
+        log(`vkey ${prefix} ${mid}: ${error}`);
+      }
+    }
+    queue.urls.set(mid, found);
+    return found;
+  };
+
+  const currentMid = () => queue.ids[queue.index] ?? null;
+
+  /** The station this queue is, by its id: a radio station's songs come from the server, a batch at a time. */
+  const stationId = () => {
+    const parts = String(queue.context?.id ?? "").split(":");
+    return parts[1] === "radio" || parts[1] === "station"
+      ? parts.slice(2).join(":")
       : null;
-    if (parts[1] === "radio") {
-      let id = parts[2] === "name" ? null : Number(parts[2]);
-      const label =
-        parts[2] === "name"
-          ? decodeURIComponent(parts.slice(3).join(":"))
-          : command.name;
-      if (!id && label) {
-        const data = initialData(document);
-        const groups = data?.radio_list ?? data?.data?.radio_list;
-        id = groups
-          ?.flatMap((group) => group.list ?? [])
-          .find((station) => norm(station.title) === label)?.id;
-      }
-      if (!id) return;
-      localStorage.setItem(
-        QUEUE_META,
-        JSON.stringify({
-          context: {
-            id: `qq:radio:${id}`,
-            name: command.name || label || "QQ 音乐电台",
-            kind: "station",
-          },
-          at: Date.now(),
-          count: 1,
-        }),
-      );
-      post({
-        queued: true,
-        player: `${ORIGIN}/n/ryqq_v2/player_radio#id=${id}`,
-        track: tracks()[0] ?? null,
+  };
+
+  /** The next batch of a station's songs (`mb_track_radio_svr`): each call is fresh, so a station never runs
+   * out — that is what the radar is. `true` when it gave songs the queue didn't have. */
+  const extendStation = async () => {
+    const id = stationId();
+    if (!id) return false;
+    try {
+      const data = await api("mb_track_radio_svr", "get_radio_track", {
+        id: Number(id) || id,
+        num: 20,
+        firstplay: queue.ids.length > 0 ? 0 : 1,
       });
-      return;
-    }
-    if (parts[1] === "track" || Array.isArray(command.songs)) {
-      const ids =
-        Array.isArray(command.songs) && command.songs.length
-          ? command.songs
-          : [wanted];
-      const songs = await rawForIds(ids);
-      if (!songs.length) return;
-      if (command.insert) {
-        try {
-          const existing = JSON.parse(
-            localStorage.getItem("playSongData") || "null",
-          )?.value;
-          const old = Array.isArray(existing?.songList)
-            ? existing.songList
-            : [];
-          const current = Math.max(
-            0,
-            Math.min(old.length - 1, Number(existing?.index) || 0),
-          );
-          if (old.length) {
-            const after = old.slice(current + 1);
-            const before = old.slice(0, current + 1);
-            const chosen = songs[0];
-            const kept = [...after, ...before].filter(
-              (song) => song?.mid !== chosen?.mid,
-            );
-            saveQueue(
-              [chosen, ...kept],
-              0,
-              JSON.parse(localStorage.getItem(QUEUE_META) || "null")?.context ??
-                null,
-            );
-            post({ queued: true, track: tracks()[0] ?? null });
-            return;
-          }
-        } catch {}
+      const rows = Array.isArray(data.tracks) ? data.tracks : [];
+      let grown = false;
+      for (const raw of rows) {
+        const mid = String(raw?.mid ?? "");
+        const track = mid ? trackFromApi(raw) : null;
+        if (!track) continue;
+        byMid.set(mid, track);
+        if (!queue.ids.includes(mid)) {
+          queue.ids.push(mid);
+          grown = true;
+        }
       }
-      saveQueue(songs, command.index, context);
-      post({ queued: true, track: tracks()[0] ?? null });
-      return;
-    }
-    if (
-      parts[1] === "playlist" ||
-      parts[1] === "album" ||
-      parts[1] === "toplist"
-    ) {
-      remember({ kind: parts[1], id: wanted });
-      navigate(
-        parts[1] === "album"
-          ? `${ORIGIN}/n/ryqq_v2/albumDetail/${parts.slice(2).join(":")}`
-          : parts[1] === "toplist"
-            ? `${ORIGIN}/n/ryqq_v2/toplist/${parts.slice(2).join(":")}`
-            : `${ORIGIN}/n/ryqq_v2/playlist/${parts.slice(2).join(":")}`,
-      );
+      log(`radio ${id}: ${rows.length} songs, ${grown ? "more" : "nothing new"}`);
+      return grown;
+    } catch (error) {
+      log(`radio ${id}: ${error}`);
+      return false;
     }
   };
-  const resume = async () => {
-    const command = pending();
-    if (!command) return;
-    const key = String(command.id).split(":").slice(2).join(":");
-    const where =
-      command.kind === "track"
-        ? "songDetail"
-        : command.kind === "album"
-          ? "albumDetail"
-          : command.kind === "toplist"
-            ? "toplist"
-            : "playlist";
-    if (!location.pathname.includes(where) || !location.pathname.includes(key))
-      return;
-    // QQ Music's own queue: the page's song list in the storage key its player reads. This avoids
-    // pressing the page's Play button (which may open its log-in dialog) and carries the whole page.
-    const data = window.__INITIAL_DATA__;
-    const songs = data?.songList ?? data?.songlist ?? data?.songs;
-    if (Array.isArray(songs) && songs.length > 0) {
-      const title =
-        command.name ||
-        data?.detail?.title ||
-        one("h1, .playlist__title, .album__title")?.textContent ||
-        "QQ Music";
-      saveQueue(
-        songs,
-        command.index,
-        command.id
-          ? {
-              id: command.id,
-              name: norm(title),
-              kind:
-                command.kind ||
-                (where === "albumDetail"
-                  ? "album"
-                  : where === "songDetail"
-                    ? "song"
-                    : "playlist"),
-            }
-          : null,
-      );
-      forget();
-      post({ queued: true, track: tracks()[0] ?? null });
-      return;
-    }
-    for (let i = 0; i < 24; i++) {
-      if (clickPlay()) {
-        await sleep(1200);
-        forget();
-        post({ queued: true, track: tracks()[0] ?? null });
+
+  const newAudio = () => {
+    const element = new Audio();
+    element.preload = "auto";
+    element.volume = volume;
+    element.crossOrigin = "anonymous";
+    element.addEventListener("play", () => sayPlayback(true));
+    // The cab's way, woken as the sound starts: a page nothing is ever clicked on can find it asleep.
+    element.addEventListener("playing", () => {
+      sound?.wake?.();
+      sayPlayback(true);
+    });
+    element.addEventListener("pause", () => sayPlayback(true));
+    element.addEventListener("loadedmetadata", () => sayPlayback(true));
+    element.addEventListener("error", () => {
+      loading = false;
+      if (audio !== element) return;
+      const id = currentMid();
+      const way = id ? queue.urls.get(id) : null;
+      const host = way?.host ?? String(element.currentSrc || element.src).split("/")[2] ?? "";
+      log(`sound failed: ${element.error?.code ?? "?"} (${host})`);
+      // One quality's file may be missing from the host (`M800` asked for, `M500` the only one there): the same
+      // song at the next one.
+      if (way?.more) {
+        qualities.set(id, (qualities.get(id) ?? 0) + 1);
+        queue.urls.delete(id);
+        log(`sound: ${id} at another quality`);
+        return void playCurrent();
+      }
+      // A host that won't play directly (plain http, or a response this page can't take): the same song
+      // through the proxy, and every song from that host from now on.
+      if (way && proxy && !proxiedHosts.has(host) && !retried.has(id)) {
+        proxiedHosts.add(host);
+        retried.add(id);
+        queue.urls.delete(id);
+        log(`sound: ${host} goes through the proxy from now on`);
+        sayPlayback(true);
+        void playCurrent();
         return;
       }
-      await sleep(250);
-    }
+      sayPlayback(true);
+      nextFailed();
+    });
+    element.addEventListener("timeupdate", () => {
+      if (audio !== element) return;
+      lastPosition = element.currentTime;
+      sayPlayback();
+    });
+    element.addEventListener("ended", () => {
+      if (queue.repeat === "one") {
+        element.currentTime = 0;
+        element.play().catch(() => {});
+        return;
+      }
+      next();
+    });
+    return element;
   };
 
-  // --- The player -------------------------------------------------------------------------------------------
-  const findAudio = () =>
-    all("audio").find((audio) => audio.src || audio.currentSrc) ?? null;
-  const trackFromRaw = (song, index = 0) => {
-    if (!song?.mid) return null;
-    return {
-      id: `qq:track:${song.mid}`,
-      name: norm(song.name ?? song.title),
-      artist: artistName(song.singer),
-      album: norm(song.album?.name ?? song.album?.title),
-      albumId: song.album?.mid ? `qq:album:${song.album.mid}` : null,
-      artistId: song.singer?.[0]?.mid
-        ? `qq:artist:${song.singer[0].mid}`
-        : null,
-      image: coverOfSong(song),
-      color: COLOR,
-      duration: Number(song.interval) || parseTime(song.playTime),
-      explicit: Boolean(song.ov),
-      number: Number(song.number) || index + 1,
-      favorite: typeof song.isFan === "boolean" ? song.isFan : undefined,
-    };
-  };
-  const musicInfo = () => {
-    if (location.pathname.includes("player_radio")) {
-      const title = norm(one(".player_radio__song")?.textContent);
-      const artist = norm(one(".player_radio__author")?.textContent);
-      return {
-        title,
-        artist,
-        text: [title, artist].filter(Boolean).join(" - "),
-        href:
-          one(
-            'a[href*="/songDetail/"]',
-            one(".player_radio__content"),
-          )?.getAttribute("href") ?? "",
-      };
-    }
-    const info = one(".player_music__info");
-    const links = all("a", info ?? document);
-    const titleLink = links.find((link) =>
-      /songDetail\//.test(link.getAttribute("href") ?? ""),
-    );
-    const artistLink = links.find((link) =>
-      /singer\//.test(link.getAttribute("href") ?? ""),
-    );
-    const text = norm(info?.textContent);
-    const [title, artist] = text.includes(" - ")
-      ? text.split(/\s+-\s+/, 2)
-      : [text, ""];
-    return {
-      title: norm(titleLink?.textContent ?? title),
-      artist: norm(artistLink?.textContent ?? artist),
-      text,
-      href: titleLink?.getAttribute("href") ?? "",
-    };
-  };
-  const currentPlayback = () => {
-    const audio = findAudio();
-    const radio = location.pathname.includes("player_radio");
-    const info = musicInfo();
-    const time = radio
-      ? {
-          position: parseTime(one(".player_now_time")?.textContent),
-          duration: parseTime(one(".player_total_time")?.textContent),
-        }
-      : pair(one(".player_music__time")?.textContent);
-    const cover = radio
-      ? (imageOf(one(".player_radio__cover")) ??
-        background(one(".player_radio__cover")))
-      : (background(one(".bg_player")) ??
-        imageOf(one(".player_music__info, .player_music")));
-    const mid = idOf(info.href, "track");
-    const rows = tracks();
-    const savedValue = (() => {
-      try {
-        return (
-          JSON.parse(localStorage.getItem("playSongData") || "null")?.value ??
-          null
-        );
-      } catch {
-        return null;
+  const playCurrent = async (tried = new Set()) => {
+    const mid = currentMid();
+    if (!mid) return stop();
+    loading = true;
+    sayPlayback(true);
+    const found = await urlOf(mid);
+    if (!found) {
+      tried.add(mid);
+      const index = nextUntried(tried);
+      if (index !== null) {
+        queue.index = index;
+        return playCurrent(tried);
       }
-    })();
-    const savedMeta = (() => {
-      try {
-        return JSON.parse(localStorage.getItem(QUEUE_META) || "null") ?? null;
-      } catch {
-        return null;
-      }
-    })();
-    const rawQueue = Array.isArray(savedValue?.songList)
-      ? savedValue.songList
-      : [];
-    const savedIndex = rawQueue.findIndex(
-      (song) => song?.mid && song.mid === mid,
-    );
-    const queueIndex =
-      savedIndex >= 0
-        ? savedIndex
-        : Math.max(0, Number(savedValue?.index) || 0);
-    const savedCurrent = trackFromRaw(rawQueue[queueIndex], queueIndex);
-    const playedDuration =
-      Number.isFinite(audio?.duration) && Number(audio?.duration) > 0
-        ? Number(audio.duration)
-        : time.duration;
-    const current = radio
-      ? null
-      : (rows.find((row) => norm(info.text).startsWith(norm(row.name))) ??
-        rows.find(
-          (row) =>
-            norm(row.name) === norm(info.title) &&
-            norm(row.artist) === norm(info.artist),
-        ) ??
-        rows.find((row) => norm(row.name) === norm(info.title)) ??
-        savedCurrent ??
-        null);
-    const liked =
-      /btn_big_like--like|btn_big_like[^"' ]*[^"' ]*(?:liked|active)/i.test(
-        one(".btn_big_like")?.className ?? "",
-      );
-    const radioLiked =
-      /btn_like--like|btn_like[^"' ]*[^"' ]*(?:liked|active)/i.test(
-        one(".btn_like")?.className ?? "",
-      );
-    const next = radio
-      ? []
-      : rawQueue
-          .slice(queueIndex + 1, queueIndex + 31)
-          .map((song, index) => trackFromRaw(song, queueIndex + index + 1))
-          .filter(Boolean);
-    const track =
-      current ??
-      (info.title
-        ? {
-            id: mid
-              ? `qq:track:${mid}`
-              : radio
-                ? `qq:radio-current:${encodeURIComponent(info.title)}|${encodeURIComponent(info.artist)}`
-                : `qq:current:${info.title}`,
-            name: info.title,
-            artist: info.artist,
-            album: "",
-            image: cover ?? DEFAULT_IMAGE,
-            color: COLOR,
-            duration: playedDuration,
-            explicit: false,
-            favorite: radio ? radioLiked : liked,
-          }
-        : null);
-    if (!track) return null;
-    const index = current ? rows.indexOf(current) : 0;
-    const mode = norm(
-      one('.btn_big_only, [class*="loop"], [class*="mode"]')?.textContent,
-    );
-    const volumeBar = one(
-      ".player_voice .player_progress__inner, .player_radio__voice .player_progress__inner",
-    );
-    const volumeBox = volumeBar?.getBoundingClientRect();
-    const volumeFill = volumeBar
-      ? one(".player_progress__play", volumeBar)
-      : null;
-    const volume =
-      volumeBox && volumeBox.width > 0 && volumeFill
-        ? Math.max(
-            0,
-            Math.min(
-              1,
-              volumeFill.getBoundingClientRect().width / volumeBox.width,
-            ),
-          )
-        : (audio?.volume ?? null);
-    return {
-      track: {
-        ...track,
-        image: cover ?? track.image,
-        duration: playedDuration || track.duration,
-        favorite: radio ? radioLiked : liked,
-      },
-      context: savedMeta?.context ?? {
-        id: radio ? "qq:radio" : "qq:player",
-        name: radio ? "QQ 音乐电台" : "QQ Music",
-        kind: radio ? "station" : "playlist",
-      },
-      playing: audio ? !audio.paused && !audio.ended : playing(),
-      loading: false,
-      position:
-        Number.isFinite(audio?.currentTime) && Number(audio?.currentTime) > 0
-          ? Number(audio.currentTime)
-          : time.position,
-      duration: playedDuration || track.duration,
-      preview: false,
-      shuffle: /随机|shuffle/i.test(mode),
-      repeat: /单曲|one/i.test(mode)
-        ? "one"
-        : /循环|list/i.test(mode)
-          ? "all"
-          : "off",
-      volume,
-      next: next.length ? next : rows.slice(index + 1, index + 9),
-    };
-  };
-  let lastPlayback = "";
-  const sayPlayback = () => {
-    const playback = currentPlayback();
-    const text = JSON.stringify(playback);
-    if (text !== lastPlayback) {
-      lastPlayback = text;
-      post({ playback });
-    }
-  };
-  const click = (selector) => {
-    const button = one(selector);
-    if (button) {
-      button.click();
-      return true;
-    }
-    return false;
-  };
-  const clickAt = (x, y) => post({ click: { x, y } });
-  const fire = (element, type, x, y, buttons = 0) =>
-    element?.dispatchEvent(
-      new MouseEvent(type, {
-        bubbles: true,
-        clientX: x,
-        clientY: y,
-        button: 0,
-        buttons,
-      }),
-    );
-  const seek = (seconds) => {
-    const audio = findAudio();
-    if (audio) {
-      audio.currentTime = Math.max(0, seconds);
-      return;
-    }
-    const bar = one(".player_progress__inner");
-    const duration = currentPlayback()?.duration || 0;
-    if (!bar || !duration) {
+      loading = false;
+      const track = byMid.get(mid) ?? null;
       post({
-        log: `seek no bar=${Boolean(bar)} duration=${Math.round(duration)}`,
+        playback: track
+          ? {
+              track,
+              context: queue.context,
+              playing: false,
+              loading: false,
+              position: 0,
+              duration: track.duration,
+              preview: false,
+              shuffle: queue.shuffle,
+              repeat: queue.repeat,
+              volume,
+              failed: true,
+              next: [],
+            }
+          : null,
       });
-      return;
+      return null;
     }
-    const box = bar.getBoundingClientRect();
-    const x =
-      box.left + Math.max(0, Math.min(1, seconds / duration)) * box.width;
-    const y = box.top + box.height / 2;
-    post({
-      log: `seek ${Math.round(seconds)}s at ${Math.round(x)},${Math.round(y)}`,
-    });
-    clickAt(x, y);
-    // Fallback for a hidden composition view that does not take native input: the page's own
-    // onClick is on the outer progress bar, not on its inner line.
-    fire(bar.closest(".player_progress") ?? bar, "click", x, y);
-  };
-  const setVolume = (share) => {
-    const audio = findAudio();
+    throughCab = Boolean(found.cors);
+    log(`sound: ${throughCab ? "cors" : "cross-origin"}, proxy ${proxy ? "on" : "off"}, ${mid}`);
     if (audio) {
-      audio.volume = Math.max(0, Math.min(1, share));
-      return;
+      audio.pause();
+      audio.removeAttribute("src");
     }
-    const bar = one(".player_voice .player_progress__inner");
-    if (!bar) {
-      post({ log: "volume no bar" });
-      return;
+    audio = newAudio();
+    audio.src = found.url;
+    lastPosition = 0;
+    try {
+      await audio.play();
+    } catch (error) {
+      log(`play: ${error}`);
     }
-    const box = bar.getBoundingClientRect();
-    const fill = one(".player_progress__play", bar);
-    const current =
-      fill && box.width
-        ? Math.max(
-            0,
-            Math.min(1, fill.getBoundingClientRect().width / box.width),
-          )
-        : 0;
-    const y = box.top + box.height / 2;
-    const fromX = box.left + current * box.width;
-    const toX = box.left + Math.max(0, Math.min(1, share)) * box.width;
-    const dot = one(".player_progress__dot", bar);
-    post({
-      log: `volume ${Math.round(share * 100)}% at ${Math.round(toX)},${Math.round(y)}`,
-    });
-    post({
-      drag: {
-        fromX,
-        fromY: y,
-        toX,
-        toY: y,
-      },
-    });
-    // The same drag as the page itself: the dot's onMouseDown starts it, then the document's move/up
-    // finish it. The outer bar's onClick is a second fallback.
-    fire(dot ?? bar, "mousedown", fromX, y, 1);
-    fire(document, "mousemove", toX, y, 1);
-    fire(document, "mouseup", toX, y);
-    fire(bar.closest(".player_progress") ?? bar, "click", toX, y);
-  };
-  const CONTROLS = {
-    play() {
-      const audio = findAudio();
-      if (audio && audio.paused) return void audio.play().catch(() => {});
-      if (!playing()) click(".btn_big_play, .btn_play");
-    },
-    pause() {
-      const audio = findAudio();
-      if (audio && !audio.paused) return void audio.pause();
-      if (playing()) click(".btn_big_play, .btn_play");
-    },
-    next() {
-      click(".btn_big_next, .js_play_next");
-    },
-    previous() {
-      click(".btn_big_prev");
-    },
-    seek(command) {
-      seek(Number(command.seconds) || 0);
-    },
-    volume(command) {
-      setVolume((Number(command.percent) || 0) / 100);
-    },
-    shuffle() {
-      click('[class*="shuffle"], [title*="随机"], [class*="random"]');
-    },
-    repeat() {
-      click(
-        '.btn_big_only, [class*="repeat"], [class*="loop"], [title*="循环"]',
-      );
-    },
-    jump(command) {
-      try {
-        const stored = JSON.parse(
-          localStorage.getItem("playSongData") || "null",
-        );
-        const currentMid = String(currentPlayback()?.track?.id ?? "")
-          .split(":")
-          .pop();
-        const currentIndex = stored?.value?.songList?.findIndex(
-          (song) => song?.mid === currentMid,
-        );
-        const base =
-          currentIndex >= 0 ? currentIndex : Number(stored?.value?.index) || 0;
-        if (stored?.value?.songList?.[base + (Number(command.offset) || 0)]) {
-          stored.value.index = base + (Number(command.offset) || 0);
-          stored.value.time = Date.now();
-          localStorage.setItem("playSongData", JSON.stringify(stored));
-          location.reload();
-          return;
-        }
-      } catch {}
-      const rows = all('.songlist__item, [class*="songlist__item"]');
-      const row = rows[Number(command.offset) || 0];
-      const button = row
-        ? one(
-            '[class*="list_menu__play"], [title="播放"], .songlist__icon',
-            row,
-          )
-        : null;
-      button?.click();
-    },
-    favorite() {
-      click(".btn_big_like, .btn_like");
-    },
-    add() {},
+    const way = sound?.state?.() ?? {};
+    log(
+      `playing ${mid}: volume ${audio.volume.toFixed(2)}, muted ${audio.muted}, ${Math.round(audio.duration || 0)} s, ` +
+        `cab ${way.built ? "built" : "none"}, context ${way.context ?? "?"}, speakers ${way.speakers ?? 0}, ` +
+        `head ${Boolean(way.head)}, taking ${Boolean(throughCab && headReady)}`,
+    );
+    sound?.wake?.();
+    void favourOf(mid).then((on) => on !== null && sayPlayback(true));
+    failures = 0;
+    setTimeout(checkAudible, 1200);
+    loading = false;
+    sayPlayback(true);
+    for (const mid of queue.ids.slice(queue.index + 1, queue.index + 3)) urlOf(mid);
+    return mid;
   };
 
-  // --- The truck's speakers ---------------------------------------------------------------------------------
-  const cab = {
-    speakers: null,
-    head: null,
-    outside: null,
-    equalizer: null,
-    reverb: null,
-    character: null,
-    reflection: null,
-    bass: null,
-    spectrum: false,
+  /** A song whose sound couldn't be had at all: the next one — unless three in a row fail, which is a sign the
+   * account may play none of them, and asking again and again would only flicker through the queue. */
+  const nextFailed = () => {
+    failures += 1;
+    if (failures >= 3) {
+      failures = 0;
+      audio?.pause();
+      return sayPlayback(true);
+    }
+    next();
   };
-  let sound = null;
-  let saidNativeRadio = false;
-  let radioFrame = null;
-  const tellRadio = (message) => {
-    if (role === "player" && radioFrame)
-      radioFrame.postMessage(
-        { __westplayRadioCab: true, message },
-        "*",
-      );
+
+  const nextUntried = (tried) => {
+    const count = queue.ids.length;
+    for (let step = 1; step <= count; step++) {
+      const at = queue.index + step;
+      if (at >= count && queue.repeat !== "all") return null;
+      const index = at % count;
+      if (!tried.has(queue.ids[index])) return index;
+    }
+    return null;
   };
-  const tellRadioCab = () => {
-    if (cab.speakers !== null)
-      tellRadio({ action: "speakers", speakers: cab.speakers });
-    if (cab.head !== null) tellRadio(cab.head);
-    if (cab.outside !== null) tellRadio(cab.outside);
-    if (cab.equalizer !== null) tellRadio(cab.equalizer);
-    tellRadio({ action: "spectrum", on: cab.spectrum });
+
+  const nextIndex = () => (queue.shuffle && queue.ids.length > 1 ? Math.floor(Math.random() * queue.ids.length) : nextUntried(new Set()));
+
+  const next = () => {
+    const index = nextIndex();
+    if (index !== null) {
+      queue.index = index;
+      return playCurrent();
+    }
+    // A station has no end: the server has more songs, asked for as this batch runs out.
+    if (stationId()) {
+      const from = queue.ids.length;
+      return void extendStation().then((grown) => {
+        if (!grown) {
+          audio?.pause();
+          return sayPlayback(true);
+        }
+        queue.index = from;
+        return playCurrent();
+      });
+    }
+    audio?.pause();
+    sayPlayback(true);
   };
-  const attach = () => {
-    const qma = () => window.__westplayQmaOutput?.node ?? null;
-    // Radio's media element is cross-origin and has no QMA node. Routing it through
-    // `createMediaElementSource` makes Chromium output silence when CORS does not permit the media
-    // stream. Leave this route native so it remains audible.
-    const radioAudio = findAudio();
-    if (
-      location.pathname.includes("player_radio") &&
-      !qma() &&
-      radioAudio?.crossOrigin !== "anonymous"
-    ) {
-      if (!saidNativeRadio) {
-        saidNativeRadio = true;
-        post({ log: "radio media is playing natively (cross-origin Web Audio is muted)" });
-      }
+
+  const previous = () => {
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
       return;
     }
-    const source = qma() ?? findAudio();
-    if (!source || typeof window.westplayCabSound !== "function")
-      return;
-    if (!sound) {
-      sound = window.westplayCabSound(
-        () => qma() ?? findAudio(),
-        (message) => post(message),
-        { playing },
-      );
-    } else {
-      sound.tick();
-    }
-    if (cab.speakers !== null) sound.speakers(cab.speakers);
-    if (cab.head !== null) sound.head(cab.head);
-    if (cab.outside !== null)
-      sound.outside(cab.outside.on, cab.outside.distance);
-    if (cab.equalizer !== null) sound.equalizer(cab.equalizer);
-    if (cab.reverb !== null) sound.reverb(cab.reverb);
-    if (cab.character !== null) sound.character(cab.character);
-    if (cab.reflection !== null) sound.reflection(cab.reflection);
-    if (cab.bass !== null) sound.bass(cab.bass);
-    sound.spectrum(cab.spectrum);
+    if (queue.index > 0) {
+      queue.index -= 1;
+      playCurrent();
+    } else if (audio) audio.currentTime = 0;
   };
+
+  const stop = () => {
+    audio?.pause();
+    if (audio) audio.removeAttribute("src");
+    loading = false;
+    sayPlayback(true);
+  };
+
+  /** A station started from a card: its first batch, and a queue that grows itself as it plays. */
+  const startStation = async (id, name) => {
+    queue.ids = [];
+    queue.index = 0;
+    queue.shuffle = false;
+    queue.context = { id: `qq:radio:${id}`, name: name ?? "", kind: "station" };
+    loading = true;
+    sayPlayback(true);
+    if (!(await extendStation())) {
+      loading = false;
+      log(`play: the station ${id} gave no songs`);
+      return sayPlayback(true);
+    }
+    queue.index = 0;
+    await playCurrent();
+  };
+
+  const setQueue = async ({ ids, index = 0, context = null, shuffle = false }) => {
+    if (!ids || ids.length === 0) return;
+    queue.ids = ids.map(String);
+    queue.index = Math.min(Math.max(0, index), queue.ids.length - 1);
+    queue.context = context;
+    queue.shuffle = Boolean(shuffle);
+    await tracksOf(queue.ids);
+    await playCurrent();
+  };
+
+  const playbackOf = () => {
+    const mid = currentMid();
+    if (!mid) return null;
+    const track = byMid.get(mid);
+    if (!track) return null;
+    const upcoming = queue.ids
+      .slice(queue.index + 1, queue.index + 6)
+      .map((each) => byMid.get(each))
+      .filter(Boolean);
+    return {
+      track,
+      context: queue.context,
+      playing: Boolean(audio && !audio.paused && !audio.ended),
+      loading,
+      position: Number.isFinite(audio?.currentTime) ? audio.currentTime : lastPosition,
+      duration: track.duration || (Number.isFinite(audio?.duration) ? audio.duration : 0),
+      preview: false,
+      shuffle: queue.shuffle,
+      repeat: queue.repeat,
+      volume,
+      next: upcoming,
+    };
+  };
+
+  let playbackAt = 0;
+  const sayPlayback = (force = false) => {
+    const now = performance.now();
+    if (!force && now - playbackAt < 700) return;
+    playbackAt = now;
+    post({ playback: playbackOf() });
+    keepPlaceSoon();
+  };
+
+  const sayState = () =>
+    post({ state: { signedIn: signedIn(), playing: Boolean(audio && !audio.paused), avatar: avatar() } });
+
+  // The song and where it played, kept: opening WestPlay shows it again, paused (as the other players do).
+  const LAST_KEY = "westplay.qq.last";
+  let rememberedAt = 0;
+  const keepPlace = () => {
+    const mid = currentMid();
+    if (!mid) return;
+    try {
+      localStorage.setItem(
+        LAST_KEY,
+        JSON.stringify({
+          ids: queue.ids.slice(0, 200),
+          index: queue.index,
+          context: queue.context,
+          position: Math.max(0, Number(audio?.currentTime) || 0),
+        }),
+      );
+    } catch {}
+  };
+  const keepPlaceSoon = () => {
+    const now = performance.now();
+    if (now - rememberedAt < 2000) return;
+    rememberedAt = now;
+    keepPlace();
+  };
+  let restored = false;
+  const restore = async () => {
+    if (restored) return;
+    restored = true;
+    if (currentMid()) return;
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(LAST_KEY) || "null");
+    } catch {}
+    const ids = Array.isArray(saved?.ids) ? saved.ids.map(String) : [];
+    if (ids.length === 0) return;
+    queue.ids = ids;
+    queue.index = Math.min(Math.max(0, Number(saved.index) || 0), ids.length - 1);
+    queue.context = saved.context ?? null;
+    await tracksOf(ids);
+    const found = await urlOf(currentMid()).catch(() => null);
+    if (found) {
+      throughCab = Boolean(found.cors);
+      audio = newAudio();
+      audio.src = found.url;
+      const at = Math.max(0, Number(saved.position) || 0);
+      audio.addEventListener("loadedmetadata", () => {
+        try {
+          audio.currentTime = Math.min(at, Math.max(0, (audio.duration || at) - 1));
+        } catch {}
+        sayPlayback(true);
+      });
+    }
+    sayPlayback(true);
+    log(`restored ${currentMid()} at ${Math.round(Number(saved.position) || 0)}s`);
+  };
+
+  // The truck's speakers (cab_sound.js, loaded first): this page's own sound, split to the cab's speakers —
+  // once there is a cab to play it (its head known) and the song may be taken into the browser's own graph (a
+  // host that refuses CORS lets a song be taken in, and plays it silently once it is). Until both, the song
+  // plays as it is rather than not at all.
+  let throughCab = false;
+  let headReady = false;
+  const sound = window.westplayCabSound?.(
+    () => (throughCab && headReady ? audio : null),
+    post,
+  );
+
+  // A song that plays silently: taken into the cab's way but with nothing coming out of it (a context the
+  // browser left asleep, a way that couldn't be made). A second in, it is played as it is instead — plainly
+  // heard beats not heard — and the log says why (the cab is given up for that song only).
+  const checkAudible = () => {
+    const element = audio;
+    if (!element || audio !== element || element.paused || element.error) return;
+    // What was heard a second in (a song that runs on silently is read from this line).
+    {
+      const way = sound?.state?.() ?? {};
+      log(`heard: ${throughCab && headReady ? `cab level ${way.level ?? "?"}` : "as it is"}, context ${way.context ?? "?"}`);
+    }
+    if (!throughCab || !headReady) return;
+    const way = sound?.state?.() ?? {};
+    const quiet = way.context !== "running" || !way.built;
+    if (!quiet && !(way.level === 0)) return;
+    // A quiet passage is not a silent one: two samples before giving the cab up.
+    setTimeout(() => {
+      if (audio !== element || element.paused) return;
+      const now = sound?.state?.() ?? {};
+      if (now.context === "running" && now.built && now.level !== 0) return;
+      log(
+        `sound: the cab plays nothing (context ${now.context}, built ${now.built}, level ${now.level}); playing it as it is`,
+      );
+      throughCab = false;
+      const at = element.currentTime;
+      const src = element.currentSrc || element.src;
+      try {
+        element.pause();
+      } catch {}
+      if (!src) return;
+      audio = newAudio();
+      audio.src = src;
+      audio.addEventListener(
+        "loadedmetadata",
+        () => {
+          try {
+            audio.currentTime = Math.max(0, at);
+          } catch {}
+          audio.play().catch((error) => log(`dry resume: ${error}`));
+        },
+        { once: true },
+      );
+    }, 700);
+  };
+
   const CAB = {
-    speakers(data) {
-      cab.speakers = data.speakers;
-      sound?.speakers(data.speakers);
-      tellRadio(data);
-    },
-    head(data) {
-      cab.head = data;
+    speakers: (data) => sound?.speakers(data.speakers),
+    head: (data) => {
+      headReady = true;
       sound?.head(data);
-      tellRadio(data);
     },
-    outside(data) {
-      cab.outside = data;
-      sound?.outside(data.on, data.distance);
-      tellRadio(data);
-    },
-    equalizer(data) {
-      cab.equalizer = data;
-      cab.reverb = data.reverb;
-      cab.character = data.character;
-      cab.reflection = data.reflection;
-      cab.bass = data.bass;
+    outside: (data) => sound?.outside(data.on, data.distance),
+    equalizer: (data) => {
       sound?.equalizer(data);
       sound?.reverb(data.reverb);
       sound?.character(data.character);
       sound?.reflection(data.reflection);
       sound?.bass(data.bass);
-      tellRadio(data);
     },
-    spectrum(data) {
-      cab.spectrum = Boolean(data.on);
-      sound?.spectrum(cab.spectrum);
-      tellRadio(data);
-    },
+    spectrum: (data) => sound?.spectrum(data.on),
   };
 
-  // --- Messages ---------------------------------------------------------------------------------------------
-  window.addEventListener(
-    "message",
-    ({ data, origin, source }) => {
-      if (!data?.__westplayRadioFrame) return;
-      radioFrame = source;
-      if (data.ready) tellRadioCab();
-      if (data.log)
-        post({ log: `[radio frame ${origin || "opaque"}] ${data.log}` });
-      if (Array.isArray(data.spectrum)) post({ spectrum: data.spectrum });
-    },
-    true,
-  );
-  if (role === "player") post({ log: "radio frame message bridge ready" });
+  // Whether each song is in 我喜欢. The answer is membership of the account's real liked-songs list (the
+  // official client shows the same one), so a song already there starts lit and a lit star is never a guess.
+  const favours = new Map();
+  const favourOf = async (mid) => {
+    if (!mid) return null;
+    if (favours.has(mid)) return favours.get(mid);
+    try {
+      const list = await loadLiked();
+      if (!list) return null;
+      const on = list.mids.has(mid);
+      favours.set(mid, on);
+      const track = byMid.get(mid);
+      if (track) track.favorite = on;
+      return on;
+    } catch (error) {
+      log(`favourite check ${mid}: ${error}`);
+      return null;
+    }
+  };
+
+  /** 我喜欢: the song put in (or taken out). The write goes through the site's own signed request (an
+   * unsigned musicu call answers retCode 0 without touching the account). Afterwards the real liked list
+   * is refetched and the star follows what actually landed — a write that did not take rolls the star back. */
+  const favorite = async (mid, on) => {
+    const detail = await detailOf(mid);
+    const songId = Number(detail?.songId);
+    if (!songId) {
+      log(`favorite ${mid}: no song id`);
+      return false;
+    }
+    try {
+      const request = await requestApi();
+      const response = await within(
+        request([
+          {
+            module: "music.musicasset.PlaylistDetailWrite",
+            method: on ? "AddSonglist" : "DelSonglist",
+            param: { dirId: 201, v_songInfo: [{ songId, songType: 0 }] },
+          },
+        ]),
+        15000,
+        "QQ Music favorite timed out",
+      );
+      const answer = response?.[0];
+      log(`favorite ${mid} ${on ? "add" : "del"}: code ${answer?.code}, retCode ${answer?.data?.result?.retCode ?? "?"}`);
+    } catch (error) {
+      log(`favorite ${mid}: ${error}`);
+      return false;
+    }
+    // What the account shows now, refetched: the star takes its state from this, not from the write's word.
+    liked = null;
+    favours.delete(mid);
+    const list = await loadLiked();
+    const now = list ? list.mids.has(mid) : null;
+    if (now === null) log(`favorite ${mid}: could not confirm`);
+    else if (now !== on) log(`favorite ${mid}: not ${on ? "added" : "removed"} (list still says ${now})`);
+    const final = now ?? on;
+    favours.set(mid, final);
+    const track = byMid.get(mid);
+    if (track) track.favorite = final;
+    sayPlayback(true);
+    return final === on;
+  };
+
+  const setVolume = (share) => {
+    volume = Math.min(1, Math.max(0, share));
+    try {
+      localStorage.setItem(VOLUME_KEY, String(volume));
+    } catch {}
+    if (audio) audio.volume = volume;
+    sayPlayback(true);
+  };
+
   window.chrome?.webview?.addEventListener("message", ({ data }) => {
     if (!data) return;
-    if (CAB[data.action]) return CAB[data.action](data);
-    if (data.action === "start") return sayState();
+    // Two pages, one job each: this one is only the data when it's the browse page (its own player is nowhere in
+    // it), and the sound when it's the player page (which never navigates, so the sound never stops).
     if (role === "browse") {
       if (data.action === "ask") return void ask(data.id, data.question);
-      if (data.action === "prepare") return void queue(data);
-    } else {
-      CONTROLS[data.action]?.(data);
+      return;
+    }
+    if (CAB[data.action]) return CAB[data.action](data);
+    const action = data.action;
+    if (action === "proxy" && Number(data.port) && data.token) {
+      proxy = { port: Number(data.port), token: String(data.token) };
+      return;
+    }
+    if (action === "start") {
+      sayState();
+      sayPlayback();
+      void restore();
+      return;
+    }
+    if (action === "ask") return void ask(data.id, data.question);
+    if (action === "play") {
+      if (!data.id && !data.songs) {
+        if (audio?.paused) audio.play().catch((error) => log(`resume: ${error}`));
+        return;
+      }
+      const ids = (data.songs ?? []).map((each) => String(each).split(":").pop());
+      const context = data.id ? { id: data.id, name: data.name ?? "", kind: data.kind ?? "playlist" } : null;
+      // The songs as the app shows them, so their names, players and covers are there before the sound is.
+      if (Array.isArray(data.tracks)) {
+        for (const track of data.tracks) {
+          const mid = String(track?.id ?? "").split(":").pop();
+          if (mid) byMid.set(mid, { ...track, color: track.color ?? COLOR, image: track.image ?? DEFAULT_IMAGE });
+        }
+      }
+      (async () => {
+        if (ids.length > 0) return setQueue({ ids, index: data.index ?? 0, context, shuffle: data.shuffle });
+        // A card pressed: a song plays on its own; a collection the app already shows a list of travels with it.
+        const parts = String(data.id ?? "").split(":");
+        const mid = parts.slice(2).join(":");
+        if ((parts[0] === "track" || parts[0] === "song") && mid) {
+          return setQueue({ ids: [mid], index: 0, context: null, shuffle: data.shuffle });
+        }
+        // A station: its first batch from the radio API, then a queue that grows as it plays.
+        if ((parts[1] === "radio" || parts[1] === "station") && mid) {
+          return startStation(mid, data.name);
+        }
+        log(`play: nothing to play for ${data.id}`);
+      })().catch((error) => log(`play: ${error}`));
+      return;
+    }
+    if (action === "favorite") {
+      const id = String(data.id ?? "").split(":").pop();
+      return void favorite(id, Boolean(data.on));
+    }
+    if (action === "pause") return stop();
+    if (action === "next") return next();
+    if (action === "previous") return previous();
+    if (action === "seek") {
+      const at = Number(data.seconds) || 0;
+      if (audio) audio.currentTime = Math.max(0, at);
+      sayPlayback(true);
+      return;
+    }
+    if (action === "volume") return setVolume((Number(data.percent) || 0) / 100);
+    if (action === "shuffle") {
+      queue.shuffle = Boolean(data.on);
+      // Shuffle and the loop modes are one setting: turning shuffle on leaves the loop (the list plays
+      // through once, in a random order), so the two can't be lit at once.
+      if (queue.shuffle) queue.repeat = "off";
+      sayPlayback(true);
+      return;
+    }
+    if (action === "repeat") {
+      queue.repeat = data.mode === "one" || data.mode === "all" ? data.mode : "off";
+      // And turning the loop on leaves the shuffle.
+      queue.shuffle = false;
+      sayPlayback(true);
+      return;
+    }
+    if (action === "jump") {
+      const index = queue.index + (Number(data.offset) || 0);
+      if (index >= 0 && index < queue.ids.length) {
+        queue.index = index;
+        playCurrent();
+      }
+      return;
     }
   });
 
-  // A page loaded anew: the host re-asks what it missed, and prepares what was waiting.
-  setTimeout(() => {
-    post({ ready: true });
-    sayState();
-    if (role === "browse") void resume();
-    if (role === "player") {
-      sayPlayback();
-      attach();
-    }
-  }, 600);
-
-  setInterval(sayState, 1500);
-  setInterval(() => post({ heartbeat: true }), 1000);
+  window.addEventListener("pagehide", keepPlace);
   if (role === "player") {
-    setInterval(sayPlayback, 500);
-    setInterval(attach, 1000);
-    setTimeout(() => {
-      const audio = findAudio();
-      post({
-        log: `player audio state ${JSON.stringify({
-          qma: qmaOutput.node?.constructor?.name ?? null,
-          context: qmaOutput.context?.state ?? null,
-          audio: audio?.tagName ?? null,
-          media: document.querySelectorAll("audio, video").length,
-          crossOrigin: audio?.crossOrigin ?? null,
-          path: location.pathname,
-        })}`,
-      });
-    }, 2500);
+    setInterval(sayState, 1500);
+    setInterval(() => sound?.tick(), 250);
+    sayState();
   }
+  setInterval(() => post({ heartbeat: true }), 1000);
+  post({ ready: true });
+  log("ready");
 })();

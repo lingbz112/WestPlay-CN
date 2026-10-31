@@ -292,7 +292,9 @@ export function Onboarding({
             {step === 'spotify' && <ServiceSignIn service="spotify" status={status} next={next} back={back} />}
             {step === 'appleMusic' && <ServiceSignIn service="appleMusic" status={status} next={next} back={back} />}
             {step === 'qqMusic' && <ServiceSignIn service="qqMusic" status={status} next={next} back={back} />}
-            {step === 'neteaseMusic' && <ServiceSignIn service="neteaseMusic" status={status} next={next} back={back} />}
+            {step === 'neteaseMusic' && (
+              <ServiceSignIn service="neteaseMusic" status={status} next={next} back={back} />
+            )}
             {step === 'tutorial' && <TutorialIntro code={code} finish={finish} back={back} />}
           </ScreenContext.Provider>
         </RoomText.Provider>
@@ -865,7 +867,7 @@ const SERVICE_STEPS = {
     words: (words: Words) => words.appleMusic,
   },
   qqMusic: {
-    name: 'QQ Music',
+    name: 'QQ音乐',
     app: 'qqMusic',
     glow: GLOW.qqMusic,
     signedIn: (status: HostStatus | null) => status?.qqMusicSignedIn,

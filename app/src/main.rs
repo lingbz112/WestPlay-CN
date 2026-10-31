@@ -311,6 +311,8 @@ fn stop_host(app: &AppHandle) {
         let mut host = host.lock().unwrap_or_else(|e| e.into_inner());
         host.stop.store(true, Ordering::Relaxed);
         if let Some(thread) = host.thread.take() {
+            // In the log, so a run that ends with music still heard can be told from one that ended at once.
+            westplay_host::log!("app: closing, stopping the WebView2 host");
             // WebView2 teardown can occasionally wait forever while the game and a capture overlay are also
             // shutting down. The game already treats the host as gone once its heartbeat stops, so a bounded
             // wait keeps the visible app from remaining as an unclosable background instance.
@@ -320,6 +322,7 @@ fn stop_host(app: &AppHandle) {
             }
             if thread.is_finished() {
                 let _ = thread.join();
+                westplay_host::log!("app: the host stopped");
             } else {
                 westplay_host::log!("[shutdown] the WebView2 host didn't stop within five seconds; exiting");
             }

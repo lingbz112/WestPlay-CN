@@ -105,6 +105,11 @@ export type HostMessage =
       iconSet?: string | null
       /** Light or dark icons, or as the screen is (`IconStyle`). */
       iconStyle?: string
+      /** The cab's EQ switch (Settings › Sound's first row): off, every player plays its speakers as they're
+       * placed and shapes nothing. */
+      soundEnabled?: boolean
+      /** The preset chosen (Settings › Sound › Presets), by its id; `null`: none. */
+      preset?: string | null
       /** The player's own tone curve (Settings › Equalizer), and whether it plays (Custom) or not (Recommended). */
       equalizer?: Equalizer
       equalizerCustom?: boolean
@@ -274,11 +279,15 @@ export type Sky = 'clear' | 'rain'
 
 /** Messages from the cabin page to the host. */
 /** The players' tone controls, as a car stereo's: bass, mid and treble, in dB each (`EQUALIZER_MOST` either way;
- * the host's `speakers::Equalizer`). */
+ * the host's `speakers::Equalizer`), or — Advanced on — a fifteen-band graphic curve (`GRAPHIC_MOST` either
+ * way). Both are kept, so switching between them keeps what was tuned. */
 export interface Equalizer {
   bass: number
   mid: number
   treble: number
+  advanced: boolean
+  /** The graphic curve, lowest band first (one per `GRAPHIC_FREQUENCIES`). */
+  bands: number[]
 }
 
 export const EQUALIZER_BANDS = ['bass', 'mid', 'treble'] as const satisfies readonly (keyof Equalizer)[]
@@ -286,16 +295,38 @@ export const EQUALIZER_BANDS = ['bass', 'mid', 'treble'] as const satisfies read
 /** How far each band goes, dB (the host's `Equalizer::MOST`). */
 export const EQUALIZER_MOST = 6
 
-export const FLAT: Equalizer = { bass: 0, mid: 0, treble: 0 }
+/** The graphic curve's bands: an ISO two-thirds of an octave each, from `GRAPHIC_LOWEST` to `GRAPHIC_HIGHEST`
+ * (the host's `GRAPHIC_BANDS`), and how far each goes, dB (`Equalizer::GRAPHIC_MOST`). */
+export const GRAPHIC_BANDS = 15
+export const GRAPHIC_MOST = 12
+export const GRAPHIC_LOWEST = 25
+export const GRAPHIC_HIGHEST = 16000
+export const GRAPHIC_FREQUENCIES: readonly number[] = Array.from(
+  { length: GRAPHIC_BANDS },
+  (_, i) => GRAPHIC_LOWEST * (GRAPHIC_HIGHEST / GRAPHIC_LOWEST) ** (i / (GRAPHIC_BANDS - 1)),
+)
+
+export const FLAT: Equalizer = {
+  bass: 0,
+  mid: 0,
+  treble: 0,
+  advanced: false,
+  bands: new Array(GRAPHIC_BANDS).fill(0),
+}
 
 /** The tone as the host may send it: each band a whole number of dB within the range (anything else flat). */
 export function toEqualizer(value: unknown): Equalizer {
   const told = (value ?? {}) as Partial<Record<keyof Equalizer, unknown>>
-  const band = (db: unknown) =>
-    typeof db === 'number' && Number.isFinite(db)
-      ? Math.max(-EQUALIZER_MOST, Math.min(EQUALIZER_MOST, Math.round(db)))
-      : 0
-  return { bass: band(told.bass), mid: band(told.mid), treble: band(told.treble) }
+  const band = (db: unknown, most = EQUALIZER_MOST) =>
+    typeof db === 'number' && Number.isFinite(db) ? Math.max(-most, Math.min(most, Math.round(db))) : 0
+  const toldBands = Array.isArray(told.bands) ? (told.bands as unknown[]) : []
+  return {
+    bass: band(told.bass),
+    mid: band(told.mid),
+    treble: band(told.treble),
+    advanced: told.advanced === true,
+    bands: Array.from({ length: GRAPHIC_BANDS }, (_, i) => band(toldBands[i], GRAPHIC_MOST)),
+  }
 }
 
 /** The cab's shared reverb (`speakers::Reverb`): size 0 (compact) to 100 (long sleeper), and how audible the
@@ -383,6 +414,10 @@ export type PageMessage =
   | ({ type: 'reverb' } & Reverb)
   /** The amount of cabin modelling chosen in Settings › Sound. */
   | { type: 'character'; character: CabinCharacter }
+  /** The cab's EQ switch, from Settings › Sound's first row: kept, and every player told. */
+  | { type: 'soundEnabled'; enabled: boolean }
+  /** The preset chosen in Settings › Sound › Presets (its id; `null`: none), kept with WestPlay's settings. */
+  | { type: 'preset'; id: string | null }
   /** The cabin reflection strength chosen in Settings › Sound. */
   | ({ type: 'reflection' } & CabinReflection)
   /** The bass management crossover chosen in Settings › Sound. */
@@ -592,6 +627,8 @@ export type AppleMusicCommand =
       name?: string
       kind?: AppleMusicItem['kind']
       insert?: boolean
+      /** The songs as the app shows them: QQ Music's player plays them itself and has no page to read them from. */
+      tracks?: AppleMusicTrack[]
     }
   | { action: 'pause' }
   | { action: 'next' }

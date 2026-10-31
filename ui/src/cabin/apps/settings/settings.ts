@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** The Settings app's pages: its list, the page each row opens, and the pages within those (Appearance's Text
- * Size, Sound's Equalizer). */
+ * Size, Sound's Presets and Sound Settings, and the four pages within them). */
 export type SettingsPage =
   | 'list'
   | 'appearance'
@@ -10,6 +10,8 @@ export type SettingsPage =
   | 'dashboard'
   | 'nowPlaying'
   | 'sound'
+  | 'presets'
+  | 'soundDetail'
   | 'equalizer'
   | 'reverb'
   | 'character'
@@ -18,10 +20,12 @@ export type SettingsPage =
 /** The page a page is within, where its back button goes (the list, but for the pages within a page). */
 export const PARENT: Partial<Record<SettingsPage, SettingsPage>> = {
   textSize: 'appearance',
-  equalizer: 'sound',
-  reverb: 'sound',
-  character: 'sound',
-  bass: 'sound',
+  presets: 'sound',
+  soundDetail: 'sound',
+  equalizer: 'soundDetail',
+  reverb: 'soundDetail',
+  character: 'soundDetail',
+  bass: 'soundDetail',
 }
 
 interface SettingsState {

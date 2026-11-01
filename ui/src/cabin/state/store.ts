@@ -408,7 +408,10 @@ export const useLive = create<LiveState>()(() => ({
   ownedGarages: [],
   headquarters: null,
   hvtMap: null,
-  gameLanguage: null,
+  // In development mode (not in game), default to Chinese; support ?lang URL parameter
+  gameLanguage: typeof location !== 'undefined'
+    ? (new URLSearchParams(location.search).get('lang') ?? (isInHost() ? null : 'zh_cn'))
+    : null,
   timeZones: false,
   clockShift: 0,
   route: null,

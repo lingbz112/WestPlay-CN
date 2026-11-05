@@ -7,7 +7,7 @@ export const neteaseMusicPlayer: MusicPlayer = {
   playingHere: playingNow,
   pauseHere: pauseNow,
   resumeHere: resumeNow,
-  skipHere: skip,
+  skip: skip,
   volume: () => useNeteaseMusic.getState().playback?.volume ?? null,
   sendVolume: (share) => neteaseMusic({ action: 'volume', percent: Math.round(share * 100) }),
   setVolume: (share) => setVolume(share, true),

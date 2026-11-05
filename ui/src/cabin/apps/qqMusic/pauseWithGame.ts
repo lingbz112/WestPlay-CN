@@ -7,7 +7,7 @@ export const qqMusicPlayer: MusicPlayer = {
   playingHere: playingNow,
   pauseHere: pauseNow,
   resumeHere: resumeNow,
-  skipHere: skip,
+  skip: skip,
   volume: volumeNow,
   sendVolume: (share) => qqMusic({ action: 'volume', percent: Math.round(share * 100) }),
   setVolume: (share) => setVolume(share, true),

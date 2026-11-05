@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { isInHost, postToHost } from '../shared/host'
 import { appleMusicPlayer, pauseAppleMusicWithGame } from './apps/music/pauseWithGame'
-import { pauseQqMusicWithGame, qqMusicPlayer } from './apps/qqMusic/pauseWithGame'
-import { pauseNeteaseMusicWithGame, neteaseMusicPlayer } from './apps/neteaseMusic/pauseWithGame'
 import { keybinds } from './apps/keybinds'
 import { oneAtATime } from './apps/oneAtATime'
 import { pauseSpotifyWithGame, spotifyPlayer } from './apps/spotify/pauseWithGame'
 import { pauseYouTubeWithGame, youtubePlayer } from './apps/youtube/pauseWithGame'
 import { pauseYouTubeMusicWithGame, youtubeMusicPlayer } from './apps/youtubeMusic/pauseWithGame'
+import { pausePlayerWithGame, playerAppPlayer } from './apps/player/pauseWithGame'
+import { pauseQqMusicWithGame, qqMusicPlayer } from './apps/qqMusic/pauseWithGame'
+import { pauseNeteaseMusicWithGame, neteaseMusicPlayer } from './apps/neteaseMusic/pauseWithGame'
 import { AppScreen } from './apps/AppScreen'
 import { BootScreen } from './boot/BootScreen'
 import { Dashboard } from './dashboard/Dashboard'
@@ -22,7 +23,7 @@ import { type Route, routeKey } from './state/navigation'
 import { nextPhaseAt, type PowerPhase } from './state/power'
 import { meterFrames } from './state/frameMeter'
 import { connectHost, useCabin, useLive } from './state/store'
-import { languageOf } from './state/strings'
+import { useText } from './state/text'
 import { followTimeZone } from './state/timeZone'
 
 /**
@@ -31,23 +32,33 @@ import { followTimeZone } from './state/timeZone'
  */
 const FOLLOW_POWER = isInHost() || new URLSearchParams(location.search).has('power')
 
+/** The cab's music players. */
+const PLAYERS = [
+  youtubePlayer,
+  spotifyPlayer,
+  appleMusicPlayer,
+  qqMusicPlayer,
+  neteaseMusicPlayer,
+  youtubeMusicPlayer,
+  playerAppPlayer,
+]
+
 /** The in-cabin screen: the shell around the screen for the current route, after the boot sequence. */
 export function CabinApp() {
   const route = useCabin((state) => state.navigation.route)
   const phase = useCabin((state) => state.power.phase)
   useEffect(() => connectHost(), [])
-  // YouTube, Spotify, Apple Music, QQ Music and YouTube Music pause with the game and play on after.
+  // YouTube, Spotify, Apple Music, QQ Music, NetEase Cloud Music, YouTube Music and Player pause with the game
+  // (its menu, tabbing out) and play on after.
   useEffect(() => pauseYouTubeWithGame(), [])
   useEffect(() => pauseSpotifyWithGame(), [])
   useEffect(() => pauseAppleMusicWithGame(), [])
+  useEffect(() => pauseYouTubeMusicWithGame(), [])
+  useEffect(() => pausePlayerWithGame(), [])
   useEffect(() => pauseQqMusicWithGame(), [])
   useEffect(() => pauseNeteaseMusicWithGame(), [])
-  useEffect(() => pauseYouTubeMusicWithGame(), [])
   // One of them at a time: the newest to start plays on, the others pause (apps/oneAtATime.ts).
-  useEffect(
-    () => oneAtATime([youtubePlayer, spotifyPlayer, appleMusicPlayer, qqMusicPlayer, neteaseMusicPlayer, youtubeMusicPlayer]),
-    [],
-  )
+  useEffect(() => oneAtATime(PLAYERS), [])
   // The player's keybinds pressed in the game: the music's volume, or play/pause (apps/keybinds.ts).
   useEffect(() => followKeybinds(), [])
   // The clock where the truck is: its country's time zone, as the game's own clock (state/timeZone.ts).
@@ -60,10 +71,10 @@ export function CabinApp() {
   // Lists follow a drag, as on a touch screen (the cab has a mouse).
   useEffect(() => installDragScroll(), [])
   // The page's language, so text set in capitals follows its rules (Turkish: i to İ, not I).
-  const language = languageOf(useLive((state) => state.gameLanguage))
+  const { locale } = useText()
   useEffect(() => {
-    document.documentElement.lang = language
-  }, [language])
+    document.documentElement.lang = locale
+  }, [locale])
   usePowerClock()
   const entering = usePowerOnEntry(phase)
   // For the host's startup log: when each boot screen comes up.
@@ -91,7 +102,7 @@ export function CabinApp() {
 /** Acts on each keybind pressed in the game, for the cab's players, showing a volume it sets. Returns the
  * function that stops it. */
 function followKeybinds(): () => void {
-  const binds = keybinds([youtubePlayer, spotifyPlayer, appleMusicPlayer, qqMusicPlayer, neteaseMusicPlayer, youtubeMusicPlayer])
+  const binds = keybinds(PLAYERS)
   const stop = useLive.subscribe((live, before) => {
     if (!live.keybind || live.keybind.count === before.keybind?.count) return
     const shown = binds.press(live.keybind.action)

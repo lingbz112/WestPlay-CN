@@ -7,10 +7,10 @@ export const youtubeMusicPlayer: MusicPlayer = {
   playingHere: playingNow,
   pauseHere: pauseNow,
   resumeHere: resumeNow,
-  skipHere: skip,
   volume: () => useYouTubeMusic.getState().playback?.volume ?? null,
   sendVolume: (share) => youtubeMusic({ action: 'volume', percent: Math.round(share * 100) }),
   setVolume: (share) => setVolume(share, true),
+  skip,
   subscribe: (changed) =>
     useYouTubeMusic.subscribe((music, before) => {
       changed(Boolean(music.playback?.playing && !before.playback?.playing))

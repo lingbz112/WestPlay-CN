@@ -16,6 +16,7 @@ export type SettingsPage =
   | 'reverb'
   | 'character'
   | 'bass'
+  | 'dateTime'
 
 /** The page a page is within, where its back button goes (the list, but for the pages within a page). */
 export const PARENT: Partial<Record<SettingsPage, SettingsPage>> = {

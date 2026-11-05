@@ -121,6 +121,12 @@ export type HostMessage =
       reflection?: CabinReflection
       /** The always-on bass management's mono crossover. */
       bass?: BassManagement
+      /** Whether the map's buildings rise from it. */
+      buildings?: boolean
+      /** Whether its roads rise to their real heights. */
+      roads?: boolean
+      /** The language chosen in the companion (a game code, `de_de`); `null`: the game's. */
+      language?: string | null
     }
   /** The player's own wallpapers and icon sets (shared/customize.ts), their files at `CABIN_FILES`. */
   | { type: 'customize'; wallpapers: CustomWallpaper[]; iconSets: IconSet[] }
@@ -130,13 +136,15 @@ export type HostMessage =
   /** Whether the host draws the screen's cursor (into the frames the game takes, where the mouse is at once), or
    * the page draws its own (crates/host cursor.rs). */
   | { type: 'cursor'; host: boolean }
+  /** Where the host's cursor may be seen (page pixels): the CarPlay area, its corners round as its black ones, a
+   * little inside the frame's edge (shell/cursorArea.ts). */
+  | { type: 'cursorArea'; area: { left: number; top: number; right: number; bottom: number; radius: number } }
   /** The cities whose garages the player owns, and their headquarters', from their latest save. */
   | { type: 'garages'; owned: string[]; headquarters: string | null }
   /** The game's answer to the page's `route` request `id`. */
   | { type: 'routeAnswer'; id: number; answer: RouteAnswer }
   /** WestPlay's own routes for the page's `routes` request `id` (none: no road graph, or no way there). */
-  | { type: 'routes'; id: number; routes: PlannedRoute[] }
-  /** Whether the game's GPS follows the route picked (`follow` request `id`): `answer` "ownWay" when the
+  | { type: 'routes'; id: number; routes: PlannedRoute[] }  /** Whether the game's GPS follows the route picked (`follow` request `id`): `answer` "ownWay" when the
    * game takes another way however held, else the game's answer. */
   | { type: 'followed'; id: number; follows: boolean; answer: string }
   /** What stopping at each place of the page's `detours` request `id` adds to the trip (seconds on the map's
@@ -150,10 +158,13 @@ export type HostMessage =
   | { type: 'mapBlock'; hvt: boolean; language: string | null }
   /** Whether the player's profile has the game's time zones on (its clock the time where the truck is). */
   | { type: 'timeZones'; on: boolean }
-  /** The game's GPS route: its map nodes in order, `[x, z, forward x, forward z, distance left]` (metres;
+  /** The player's profile's units (its `g_mph`): miles and mph (`true`), or kilometres and km/h; `null` when its
+   * options don't say. */
+  | { type: 'units'; mph: boolean | null }
+  /** The game's GPS route: its map nodes in order, `[x, z, forward x, forward z, distance left, height]` (metres;
    * the road's direction, either way along it; the distance left from the node to the destination, as the
-   * game counts distances). `null` without a route. */
-  | { type: 'route'; id: number | null; nodes: [number, number, number, number, number][] | null }
+   * game counts distances; height above the sea). `null` without a route. */
+  | { type: 'route'; id: number | null; nodes: [number, number, number, number, number, number][] | null }
   /** The ways through the route's junctions (the junction's own lanes, from the game's files): each from
    * the node it starts at to the next, as `[x, z]` points; and the turns there, by the same node: the
    * turn (`right`, `exit-left`, `roundabout`…), its angle (degrees, right positive) and a roundabout's
@@ -168,6 +179,17 @@ export type HostMessage =
     }
   /** The truck's progress along the route: the index of the map node ahead of it. */
   | { type: 'routeNext'; next: number }
+  /** What route `index` offered for the page's `routes` request `id` is drawn from, read from the game's files as the
+   * game's route is (`route` and `routePaths`): its map nodes, `[x, z, forward x, forward z]`, the ways through its
+   * junctions and how far right of its way it runs. Each as it's read: one across the map takes seconds. */
+  | {
+      type: 'offeredWays'
+      id: number
+      index: number
+      nodes: [number, number, number, number][]
+      paths: [number, [number, number][]][]
+      shifts: [number, number][]
+    }
   /** Open (or close) WestPlay on the truck's screen: the companion window's switch. */
   | { type: 'westplay'; open: boolean }
   /** The game's weather (`null` when it can't be read: no game, or a game version whose weather the host
@@ -191,7 +213,7 @@ export type HostMessage =
    * its last telemetry. */
   | { type: 'game'; running: boolean }
   /** Whether the game runs under TruckersMP (the page shows its other players, from TruckersMP's map feed). */
-  | { type: 'truckersmp'; on: boolean }
+  | { type: 'truckersmp'; on: boolean; game?: 'ets2' | 'ats' | null }
   /** Under TruckersMP, the players around the player from its SDK (the plugin's): its game server's id, the
    * player's own number on it, and each other player's number, world x and z (m) and heading (turns); `null`s
    * and none when there are none to tell. */
@@ -263,6 +285,51 @@ export type HostMessage =
   | ({ type: 'youtubeMusicAnswer'; id: number; failed?: boolean } & Partial<YouTubeMusicAnswers>)
   /** What YouTube Music plays; `null`: nothing. */
   | { type: 'youtubeMusicPlayback'; playback: YouTubeMusicPlayback | null }
+  /** The game's music folder (Player): where it is (`null`: the game's folder isn't known) and its songs. */
+  | { type: 'musicFolder'; folder: string | null; songs: PlayerSong[] }
+  /** What Player plays; `null`: nothing. */
+  | { type: 'playerPlayback'; playback: PlayerPlayback | null }
+
+/** A song of the game's music folder (`westplay_host::music_folder::Song`): its file's name, and what its tags
+ * say (none on a file without them): title, artist, length (seconds; 0: not known), cover (a file at
+ * `https://westplay.music-covers/`). */
+export interface PlayerSong {
+  file: string
+  title?: string
+  artist?: string
+  seconds: number
+  cover?: string
+}
+
+export type PlayerRepeat = 'off' | 'all' | 'one'
+
+/** What Player plays (`westplay_host::music_folder::Playback`): the song (its file), playing or not (loading:
+ * asked to, its sound not come yet), where and how long (seconds), the options, the volume (0 to 1), and where
+ * it is in the songs playing. */
+export interface PlayerPlayback {
+  file: string
+  playing: boolean
+  loading: boolean
+  position: number
+  duration: number
+  shuffle: boolean
+  repeat: PlayerRepeat
+  volume: number | null
+  index: number
+  count: number
+}
+
+/** What Player asks of its player: the folder's songs (by file name, in its order) from the one at `index`
+ * (shuffled: from any when there's no index), or play on (`play` alone); its controls. */
+export type PlayerCommand =
+  | { action: 'play'; files?: string[]; index?: number; shuffle?: boolean }
+  | { action: 'pause' }
+  | { action: 'next' }
+  | { action: 'previous' }
+  | { action: 'seek'; seconds: number }
+  | { action: 'volume'; percent: number }
+  | { action: 'shuffle'; on: boolean }
+  | { action: 'repeat'; mode: PlayerRepeat }
 
 /** The game's weather: the one there is and the one it's turning to (the same once it has); in game minutes,
  * how long until the game changes it next; and how wet the roads are, percent. Each of the last two `null`
@@ -426,11 +493,14 @@ export type PageMessage =
   | { type: 'spectrum'; on: boolean }
   /** Whether what's under the cursor is light: the host draws it dark there. */
   | { type: 'cursorLight'; light: boolean }
+  /** Where the cursor may be seen: the CarPlay area, under its black corners (shell/cursorArea.ts). */
+  | { type: 'cursorArea'; area: { left: number; top: number; right: number; bottom: number; radius: number } }
   /** A change to the game's GPS route (Maps' search), at a map node (its uid, hex) for going or adding a
    * stop; the host answers with `routeAnswer` and the same `id`. */
   | { type: 'route'; id: number; action: RouteAction; node?: string }
-  /** The routes to a map node (its uid, hex) from where the truck is, to offer before Go (Directions). */
-  | { type: 'routes'; id: number; node: string }
+  /** The routes to a map node (its uid, hex; or to `also`, if a route comes to that last) from where the truck is, to
+   * offer before Go (Directions). */
+  | { type: 'routes'; id: number; node: string; also?: string }
   /** Go along the route at `index` of those offered for `routes` request `id`: the host hands it to the
    * game's GPS and answers `followed`. */
   | { type: 'follow'; id: number; index: number }
@@ -452,6 +522,8 @@ export type PageMessage =
   | { type: 'neteaseMusic'; command: AppleMusicCommand }
   /** A command for YouTube Music's web player (`westplay_host::youtube_music::Command`). */
   | { type: 'youtubeMusic'; command: YouTubeMusicCommand }
+  /** A command for Player's own player (`westplay_host::music_folder::Command`). */
+  | { type: 'player'; command: PlayerCommand }
 
 /** What the Spotify app asks of Spotify's web player (`westplay_host::spotify::Command`), run hidden by the
  * host: its sign-in, a question (answered with `spotifyAnswer` and the same `id`), and the player's controls
@@ -643,7 +715,7 @@ export type AppleMusicCommand =
   | { action: 'add'; id: string }
 
 export type AppleMusicRepeat = 'off' | 'all' | 'one'
-export type AppleMusicShelf = 'recent' | 'playlists' | 'artists' | 'albums' | 'songs' | 'podcasts'
+export type AppleMusicShelf = 'recent' | 'playlists' | 'artists' | 'albums' | 'songs'
 
 /** A card or row: what it is, its name, who it's by (an album's artist, a playlist's curator, a station's
  * tagline), Apple's editors' note, its cover (and a wide picture, Apple's editors' own) and the cover's
@@ -745,7 +817,7 @@ export type AppleMusicQuestion =
   | { ask: 'search'; query: string }
   | { ask: 'collection'; id: string }
   | { ask: 'artist'; id: string }
-  | { ask: 'library'; shelf: AppleMusicShelf; sort?: string; folder?: string; language?: 'en' | 'tr' }
+  | { ask: 'library'; shelf: AppleMusicShelf; sort?: string; folder?: string; language?: string }
   | { ask: 'lyrics'; id: string }
 
 export interface AppleMusicAnswers {
@@ -803,7 +875,7 @@ export type YouTubeMusicCommand =
   | { action: 'signIn' }
   | { action: 'signOut' }
   | { action: 'ask'; id: number; question: YouTubeMusicQuestion }
-  | { action: 'language'; code: 'en' | 'tr' }
+  | { action: 'language'; code: string }
   | { action: 'play'; watch?: YouTubeMusicWatch }
   | { action: 'pause' }
   | { action: 'next' }

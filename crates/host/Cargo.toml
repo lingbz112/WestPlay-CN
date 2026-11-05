@@ -10,6 +10,7 @@ publish.workspace = true
 base64 = "0.22"
 fastrand = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+lofty = "0.25"
 percent-encoding = "2"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }

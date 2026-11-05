@@ -191,8 +191,8 @@ pub enum Question {
 
 impl Question {
     /// The question with only what Apple Music's page may put into its requests' addresses: a sort's name
-    /// (letters, `-`, `.`), a folder of the Library's own (`library-playlist-folders:…`), a language the cab
-    /// has. Anything else is left out (the list then comes as Apple Music sorts it, from the top).
+    /// (letters, `-`, `.`), a folder of the Library's own (`library-playlist-folders:…`), a language tag (the
+    /// cab's locale: `de-DE`). Anything else is left out (the list then comes as Apple Music sorts it, from the top).
     fn checked(self) -> Self {
         match self {
             Question::Library { shelf, sort, folder, language } => Question::Library {
@@ -206,7 +206,7 @@ impl Question {
                         (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
                     })
                 }),
-                language: language.filter(|language| matches!(language.as_str(), "en" | "tr")),
+                language: language.filter(|language| crate::is_language_tag(language)),
             },
             // A song of Apple Music's (its number) or of the Library (`i.` and letters); else none (no words).
             Question::Lyrics { id } => {
@@ -232,8 +232,6 @@ pub enum Shelf {
     Artists,
     Albums,
     Songs,
-    /// NetEase Cloud Music's subscribed podcasts (the copied app's Library).
-    Podcasts,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -307,14 +305,8 @@ pub struct Track {
     pub duration: f64,
     #[serde(default)]
     pub explicit: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub number: Option<u32>,
-    /// A song only its service's own paid account plays (NetEase's VIP tag).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub vip: bool,
-    /// A song with no source at all (NetEase's 无音源 tag).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub no_source: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub favorite: Option<bool>,
 }
@@ -473,9 +465,6 @@ pub struct Playback {
     /// The page's player's volume, 0 to 1.
     #[serde(default)]
     pub volume: Option<f64>,
-    /// The song didn't play (no rights, no source): the app pauses it at once, rather than waiting.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub failed: bool,
     #[serde(default)]
     pub next: Vec<Track>,
 }
@@ -889,11 +878,12 @@ mod tests {
                 name: None,
                 kind: None,
                 insert: false,
+                tracks: None,
             }
         );
         assert_eq!(
             serde_json::from_str::<Command>(r#"{"action":"play"}"#).unwrap(),
-            Command::Play { id: None, songs: None, index: None, shuffle: None, name: None, kind: None, insert: false }
+            Command::Play { id: None, songs: None, index: None, shuffle: None, name: None, kind: None, insert: false, tracks: None }
         );
         assert_eq!(
             serde_json::from_str::<Command>(r#"{"action":"favorite","id":"songs:9","on":true}"#).unwrap(),
@@ -919,6 +909,7 @@ mod tests {
                 name: None,
                 kind: None,
                 insert: false,
+                tracks: None,
             })
             .unwrap(),
             r#"{"action":"play","songs":["songs:1"],"index":0}"#
@@ -941,7 +932,7 @@ mod tests {
         assert_eq!(checked("albums:1"), "");
     }
 
-    /// Only a sort's name, a folder of the Library's and a language the cab has reach the page's requests.
+    /// Only a sort's name, a folder of the Library's and a language tag reach the page's requests.
     #[test]
     fn passes_the_page_only_safe_parts_of_a_librarys_question() {
         let asked = |sort: &str, folder: &str, language: &str| {
@@ -963,16 +954,16 @@ mod tests {
             }
         );
         assert_eq!(
-            asked("name&ids=x", "library-playlist-folders:../../me/x", "xx"),
+            asked("name&ids=x", "library-playlist-folders:../../me/x", "tr&l=x"),
             Question::Library { shelf: Shelf::Playlists, sort: None, folder: None, language: None }
         );
         assert_eq!(
-            asked("name", "p.1", "en"),
+            asked("name", "p.1", "zh-Hans-CN"),
             Question::Library {
                 shelf: Shelf::Playlists,
                 sort: Some("name".into()),
                 folder: None,
-                language: Some("en".into()),
+                language: Some("zh-Hans-CN".into()),
             }
         );
     }
@@ -1056,6 +1047,7 @@ mod tests {
                 name: None,
                 kind: None,
                 insert: false,
+                tracks: None,
             })
             .unwrap();
         pump(12, &mut timings, &mut ready);
@@ -1163,6 +1155,7 @@ mod tests {
                 name: None,
                 kind: None,
                 insert: false,
+                tracks: None,
             })
             .unwrap();
         pump(14.6, &mut said, &mut ready);
@@ -1179,6 +1172,7 @@ mod tests {
                 name: None,
                 kind: None,
                 insert: false,
+                tracks: None,
             })
             .unwrap();
         pump(5.0, &mut said, &mut ready);

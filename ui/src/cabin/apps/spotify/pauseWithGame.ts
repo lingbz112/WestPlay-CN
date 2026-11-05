@@ -17,13 +17,13 @@ export const spotifyPlayer: MusicPlayer = {
   playingHere,
   pauseHere,
   resumeHere,
-  skipHere: skip,
   volume,
   sendVolume: (share) => {
     const chosen = volume()
     spotify({ action: 'fade', level: chosen ? Math.min(1, share / chosen) : 1 })
   },
   setVolume: (share) => setVolume(share, true),
+  skip,
   subscribe: (changed) =>
     useSpotify.subscribe((now, before) =>
       changed(Boolean(now.playing && !before.playing && now.playback?.here !== false)),

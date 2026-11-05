@@ -36,7 +36,6 @@ import {
   NoteGlyph,
   PlayGlyph,
   PlusGlyph,
-  RadioGlyph,
   SearchGlyph,
   ShuffleGlyph,
   StarGlyph,
@@ -193,7 +192,7 @@ function dedupe(sections: AppleMusicSection[]): AppleMusicSection[] {
   })
 }
 
-const SHELVES: AppleMusicShelf[] = ['albums', 'songs', 'podcasts']
+const SHELVES: AppleMusicShelf[] = ['albums', 'songs']
 
 export function Library({ shown }: { shown: boolean }) {
   const text = useText()
@@ -259,9 +258,7 @@ function shelfName(text: ReturnType<typeof useText>, shelf: AppleMusicShelf): st
         ? '我的收藏'
         : shelf === 'songs'
           ? '我喜欢的音乐'
-          : shelf === 'podcasts'
-            ? '我的播客'
-            : words.recentlyAdded
+          : words.recentlyAdded
 }
 
 /** The Library's rows' glyphs, in Apple Music's key colour. */
@@ -270,8 +267,6 @@ function LibraryRowGlyph({ shelf }: { shelf: AppleMusicShelf }) {
     <span className="am-list-glyph" aria-hidden>
       {shelf === 'songs' ? (
         <NoteGlyph size={30} />
-      ) : shelf === 'podcasts' ? (
-        <RadioGlyph size={30} />
       ) : (
         <LibraryGlyph size={30} />
       )}

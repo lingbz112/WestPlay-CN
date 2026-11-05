@@ -32,16 +32,18 @@ export function isIconStyle(style: unknown): style is IconStyle {
 const ROLES: AppIconRole[] = [
   'maps',
   'music',
-  'qqMusic',
-  'neteaseMusic',
   'spotify',
   'podcasts',
   'messages',
   'phone',
+  'calendar',
+  'qqMusic',
+  'neteaseMusic',
   'settings',
   'weather',
   'youtube',
   'youtubeMusic',
+  'player',
 ]
 
 /** Every icon file an icon set (`null`: WestPlay's own) can show, in both looks. */

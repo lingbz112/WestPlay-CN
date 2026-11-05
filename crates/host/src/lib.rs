@@ -17,6 +17,7 @@ mod gpu;
 pub mod graphics;
 mod handover;
 mod lyrics;
+mod music_folder;
 pub mod maps;
 mod performance;
 mod planner;
@@ -92,6 +93,8 @@ pub struct Status {
     pub frames_per_second: u64,
     pub dropped_total: u64,
     pub game_connected: bool,
+    /// Which game is connected (`None`: none, or a plugin that doesn't say).
+    pub game: Option<westplay_setup::game::Kind>,
     pub screen_drawing: bool,
     /// Whether the truck the player is in is one WestPlay shows in, as the plugin last saw (`None`: not known yet,
     /// or no game).
@@ -285,6 +288,14 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let customize_dir = config.data_dir.join(customize::FOLDER);
     let _ = std::fs::create_dir_all(&customize_dir);
     webview.map_folder_to_any_page("westplay.customize", &customize_dir)?;
+    // Player: the game's music folder, listed off this thread (music_folder.rs); its songs' covers for the page.
+    let music_covers = config.data_dir.join("music-covers");
+    let _ = std::fs::create_dir_all(&music_covers);
+    webview.map_folder_to_any_page(music_folder::COVERS_HOST, &music_covers)?;
+    let music_watch = music_folder::FolderWatch::start(music_covers);
+    // The folder and its songs as last listed (sent again when the page reloads).
+    let mut music_dir: Option<PathBuf> = None;
+    let mut music_listing: Option<String> = None;
     let (customize_list, customize_listed) = std::sync::mpsc::channel::<String>();
     let mut customize_posted: Option<u64> = None;
     let mut customize_message: Option<String> = None;
@@ -335,7 +346,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let mut cursor_told: Option<bool> = None;
     // What the player's latest save says (their garages, a map WestPlay doesn't allow), kept to send again
     // when the page reloads.
-    let player_watch = PlayerWatch::start();
+    let player_watch = PlayerWatch::start(bridge.clone());
     // The speakers of the parts of the truck the player is in, for the trucks whose speakers come with them.
     let mut part_speakers: Option<PartSpeakers> = None;
     let mut player_messages: Vec<String> = Vec::new();
@@ -362,6 +373,8 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     // when that was last looked for (every few seconds while the game runs and it isn't found).
     let mut truckersmp = false;
     let mut truckersmp_checked = Instant::now() - TRUCKERSMP_CHECK_EVERY;
+    // The game it runs in, as last told the page with it (its servers are that game's).
+    let mut truckersmp_game: Option<westplay_setup::game::Kind> = None;
     // The page's changes to the game's route, waiting for the plugin's answer.
     let mut route_changes = route_change::RouteChanges::default();
     // WestPlay's own routes to a place, planned for the page before Go (planner.rs), and the one picked
@@ -428,11 +441,16 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let mut youtube_music_state: Option<youtube_music::State> = None;
     let (mut youtube_music_window_open, mut youtube_music_confirming) = (false, false);
     let mut youtube_music_playback: Option<String> = None;
+    // Player's own player (music_folder.rs), while the page uses it, and what it last said played.
+    let mut music_player: Option<music_folder::Player> = None;
+    let mut music_player_playback: Option<String> = None;
+    let mut music_player_log = play_log::PlayLog::new("player");
     // The settings generation last applied (`None`: apply them once at startup).
     let mut applied_settings = None;
-    // Each keybind's presses the page was told of (`PluginBlock::keybind_presses`).
+    // Each keybind's presses and holds the page was told of (`PluginBlock::keybind_presses`, `keybind_holds`).
     let mut keybind_presses =
         bridge.bridge().plugin.keybind_presses.each_ref().map(|count| count.load(Ordering::Acquire));
+    let mut keybind_holds = bridge.bridge().plugin.keybind_holds.each_ref().map(|count| count.load(Ordering::Acquire));
     let mut last_frames = 0;
     // The startup stages still to log (`startup`), checked every turn until all are reached. The game's
     // screen frame counter as found: a session before this one may have left it counting.
@@ -486,8 +504,8 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
         if let Some(open) = config.open_request.take() {
             let _ = webview.post_json(&westplay_message(open));
         }
-        // The companion's YouTube, Spotify, Apple Music and QQ Music sign-ins or sign-outs, as the cab's would be
-        // (or only running it, to know whether it's signed in).
+        // The companion's YouTube, Spotify and Apple Music sign-ins or sign-outs, as the cab's would be (or only
+        // running it, to know whether it's signed in).
         if let Some(action) = config.accounts.youtube.take()
             && let Some(player) = start_youtube(&mut youtube, &stage, &config)
         {
@@ -575,10 +593,14 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 truckersmp_checked = Instant::now();
                 has_module(pid, TRUCKERSMP_MODULES)
             };
-            if under_truckersmp != truckersmp {
+            let game_kind = westplay_setup::game::Kind::of_bridge(bridge.bridge().plugin.game.load(Ordering::Relaxed));
+            if under_truckersmp != truckersmp || (truckersmp && game_kind != truckersmp_game) {
+                if under_truckersmp != truckersmp {
+                    log!("TruckersMP: {}", if under_truckersmp { "the game runs under it" } else { "not running" });
+                }
                 truckersmp = under_truckersmp;
-                log!("TruckersMP: {}", if truckersmp { "the game runs under it" } else { "not running" });
-                let _ = webview.post_json(&truckersmp_message(truckersmp));
+                truckersmp_game = game_kind;
+                let _ = webview.post_json(&truckersmp_message(truckersmp, truckersmp_game));
             }
             let wanted = game_adapter(&bridge);
             status.game_adapter = wanted.and_then(|luid| graphics::name_of(luid, &adapters));
@@ -639,6 +661,13 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 // A plugin of another version (the game still running from before an update): not used.
                 if !bridge.matches() && plugin.pid.load(Ordering::Relaxed) != 0 {
                     status.error = Some("the game's WestPlay plugin is another version: restart the game".into());
+                }
+                status.game = status
+                    .game_connected
+                    .then(|| westplay_setup::game::Kind::of_bridge(plugin.game.load(Ordering::Relaxed)))
+                    .flatten();
+                if let Some(kind) = status.game {
+                    music_watch.game(kind);
                 }
                 status.screen_drawing = status.game_connected && screen_frame != 0 && screen_age < 120;
                 status.truck_supported = match plugin.truck_supported.load(Ordering::Relaxed) {
@@ -702,15 +731,21 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
         }
         let mouse = pointer.update(&bridge.bridge().plugin.pointer, &webview);
         cursor.follow(mouse, Instant::now());
-        // The player's keybinds pressed in the game: the page acts on each.
+        // The player's keybinds pressed (and the volume keys held) in the game: the page acts on each.
         for keybind in Keybind::ALL {
-            let presses = bridge.bridge().plugin.keybind_presses[keybind as usize].load(Ordering::Acquire);
-            let new = presses.wrapping_sub(keybind_presses[keybind as usize]);
-            keybind_presses[keybind as usize] = presses;
-            // More at once than a player presses in a moment: another plugin's count (the game restarted).
-            if new <= MOST_KEYBIND_PRESSES {
-                for _ in 0..new {
-                    let _ = webview.post_json(&keybind_message(keybind));
+            let plugin = &bridge.bridge().plugin;
+            for (counts, told, held) in [
+                (&plugin.keybind_presses, &mut keybind_presses, false),
+                (&plugin.keybind_holds, &mut keybind_holds, true),
+            ] {
+                let count = counts[keybind as usize].load(Ordering::Acquire);
+                let new = count.wrapping_sub(told[keybind as usize]);
+                told[keybind as usize] = count;
+                // More at once than a player presses in a moment: another plugin's count (the game restarted).
+                if new <= MOST_KEYBIND_PRESSES {
+                    for _ in 0..new {
+                        let _ = webview.post_json(&keybind_message(keybind, held));
+                    }
                 }
             }
         }
@@ -726,6 +761,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
             match update {
                 RouteUpdate::Next(_) => route_next_message = Some(message.clone()),
                 RouteUpdate::Paths { .. } => route_paths_message = Some(message.clone()),
+                RouteUpdate::Offered { .. } => {}
                 RouteUpdate::Route { id, nodes, waypoints } => {
                     route_number = Some(id);
                     route_uids = Some(nodes.iter().map(|node| node.uid).collect());
@@ -783,6 +819,16 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
         while let Ok(found) = player_watch.speakers.try_recv() {
             part_speakers = Some(found);
         }
+        if let Some((folder, listing)) = music_watch.take() {
+            if folder != music_dir {
+                if let Some(player) = &music_player {
+                    let _ = player.serve(folder.as_deref());
+                }
+                music_dir = folder;
+            }
+            let _ = webview.post_json(&listing);
+            music_listing = Some(listing);
+        }
 
         for message in webview.take_page_messages() {
             match parse_page_message(&message) {
@@ -805,7 +851,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                         .chain(&route_next_message);
                     let _ = webview.post_json(&game_shown_message(game_shown));
                     let _ = webview.post_json(&game_message(game_running));
-                    let _ = webview.post_json(&truckersmp_message(truckersmp));
+                    let _ = webview.post_json(&truckersmp_message(truckersmp, truckersmp_game));
                     let _ = webview.post_json(&maps::map_message(map_shown.0.as_deref(), map_shown.1));
                     if spotify.is_some() {
                         let _ = webview.post_json(&spotify::state_message(spotify_state.as_ref(), spotify_signing_in));
@@ -837,6 +883,14 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                             let _ = webview.post_json(playback);
                         }
                     }
+                    if let Some(listing) = &music_listing {
+                        let _ = webview.post_json(listing);
+                    }
+                    if music_player.is_some()
+                        && let Some(playback) = &music_player_playback
+                    {
+                        let _ = webview.post_json(playback);
+                    }
                     let _ = webview.post_json(&settings_message(&config.settings.get()));
                     if let Some(message) = &customize_message {
                         let _ = webview.post_json(message);
@@ -864,6 +918,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 }
                 Some(PageMessage::Spectrum { on }) => spectrum = on,
                 Some(PageMessage::CursorLight { light }) => cursor.set_light(light, Instant::now()),
+                Some(PageMessage::CursorArea { area }) => cursor.set_area(Some(area)),
                 Some(PageMessage::Equalizer { equalizer: curve, custom }) => {
                     let mut sound = config.settings.get().sound;
                     sound.equalizer = curve.clamped();
@@ -1000,14 +1055,22 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                         }
                     }
                 }
+                Some(PageMessage::Player { command }) => {
+                    if music_player.is_none() && matches!(command, music_folder::Command::Pause) {
+                        // Nothing to pause: Player's player isn't running.
+                    } else if let Some(player) = start_music_player(&mut music_player, &stage, &config, music_dir.as_deref()) {
+                        let _ = player.command(&command);
+                    }
+                }
                 Some(PageMessage::Typing { selection }) => {
                     bridge.bridge().typing.selection.store(selection, Ordering::Release);
                 }
-                Some(PageMessage::Routes { id, node }) => {
+                Some(PageMessage::Routes { id, node, also }) => {
                     let to = u64::from_str_radix(&node, 16).unwrap_or(0);
+                    let also = also.as_deref().and_then(|node| u64::from_str_radix(node, 16).ok());
                     match (&map_shown.0, &last_telemetry) {
                         (Some(folder), Some(t)) => {
-                            planner.ask(id, &maps_dir, folder, (t.x as f32, t.z as f32, t.heading), to)
+                            planner.ask(id, &maps_dir, folder, (t.x as f32, t.z as f32, t.heading), to, also)
                         }
                         _ => {
                             let _ = webview.post_json(
@@ -1067,6 +1130,9 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
         }
         if let Some(routes) = planner.answer() {
             let _ = webview.post_json(&routes);
+            if let Some(last) = &planner.last {
+                route_watch.offer(last.id, &last.routes, &last.positions);
+            }
         }
         if let Some(detours) = planner.detours() {
             let _ = webview.post_json(&detours);
@@ -1433,6 +1499,47 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
             }
         }
 
+        // What Player's page says, for the page; its WebView failing closes it, as the game closing does.
+        if let Some(player) = &music_player {
+            if player.failed() || players_closing {
+                if players_closing {
+                    log!("[player] closed with the game");
+                } else {
+                    log!("[player] its browser failed: closed, the page opens it again");
+                }
+                if let Some(line) = music_player_log.heard(None) {
+                    log!("{line}");
+                }
+                if let Some(failed) = music_player.take() {
+                    failed.close(&stage);
+                }
+                music_player_playback = None;
+                let _ = webview.post_json(&music_folder::playback_message(None));
+            } else {
+                for report in player.take_reports() {
+                    match report {
+                        music_folder::Report::Spectrum(bars) => {
+                            let _ = webview.post_json(&speakers::spectrum_message(&bars));
+                        }
+                        music_folder::Report::Playback(playback) => {
+                            // Times only in the log, never the song.
+                            let heard = playback.as_deref().map(|playback| play_log::Heard {
+                                doing: play_log::doing(playback.loading, playback.playing),
+                                track: Some(playback.file.as_str()),
+                                position: playback.position,
+                            });
+                            if let Some(line) = music_player_log.heard(heard) {
+                                log!("{line}");
+                            }
+                            let message = music_folder::playback_message(playback.as_deref());
+                            let _ = webview.post_json(&message);
+                            music_player_playback = Some(message);
+                        }
+                    }
+                }
+            }
+        }
+
         // What QQ Music's pages say, and its sign-in window, for the page; a failed WebView closes both.
         if let Some(player) = &qq_music {
             if player.failed() || players_closing {
@@ -1511,8 +1618,7 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
             }
         }
 
-        // What NetEase Cloud Music's page says, and its sign-in window, for the page; a failed WebView
-        // closes it.
+        // What NetEase Cloud Music's page says, and its sign-in window, for the page; a failed WebView closes it.
         if let Some(player) = &netease_music {
             if player.failed() || players_closing {
                 if players_closing {
@@ -1802,6 +1908,20 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                     spectrum,
                 );
             }
+            if let Some(player) = &music_player {
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
+            }
         }
 
         // TruckersMP's players around the player, as the plugin last wrote them: to the page as they change (each
@@ -1990,6 +2110,13 @@ fn log_startup(bridge: &BridgeMapping, pipeline: Option<&Pipeline>, screen_frame
     !stages.iter().all(|(reached, _)| *reached)
 }
 
+/// Whether `window` (its handle) is the one in front, as Windows says.
+pub fn in_front(window: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    // SAFETY: a plain question, with nothing passed.
+    unsafe { GetForegroundWindow() }.0 as isize == window
+}
+
 /// Whether the process `game` (its pid; 0: no game) has a window showing: shown, not minimised, not cloaked
 /// (on another virtual desktop). In front or not: Lossless Scaling's window is in front of a game it scales,
 /// and a window over the game leaves it showing (owner 2026-10-28). Without a game, it counts as showing
@@ -2014,12 +2141,7 @@ fn is_shown(game: u32) -> bool {
                 return BOOL(1);
             }
             let mut cloaked = 0u32;
-            let read = DwmGetWindowAttribute(
-                window,
-                DWMWA_CLOAKED,
-                (&raw mut cloaked).cast(),
-                size_of::<u32>() as u32,
-            );
+            let read = DwmGetWindowAttribute(window, DWMWA_CLOAKED, (&raw mut cloaked).cast(), size_of::<u32>() as u32);
             looking.shown = read.is_err() || cloaked == 0;
             // Found one showing: done.
             BOOL(i32::from(!looking.shown))
@@ -2148,9 +2270,11 @@ fn cursor_message(host: bool) -> String {
     serde_json::json!({ "type": "cursor", "host": host }).to_string()
 }
 
-/// `{"type":"truckersmp","on":…}`: whether the game runs under TruckersMP (the page shows its other players).
-fn truckersmp_message(on: bool) -> String {
-    serde_json::json!({ "type": "truckersmp", "on": on }).to_string()
+/// `{"type":"truckersmp","on":…,"game":"ets2"}`: whether the game runs under TruckersMP (the page shows its other
+/// players), and which game it is (`ets2`, `ats`; `null` while the plugin hasn't said): only that game's servers
+/// are the player's.
+fn truckersmp_message(on: bool, game: Option<westplay_setup::game::Kind>) -> String {
+    serde_json::json!({ "type": "truckersmp", "on": on, "game": game }).to_string()
 }
 
 /// `{"type":"game","running":…}`: whether the game runs. As it closes, the page powers off (as with the
@@ -2178,15 +2302,16 @@ fn stops_message(id: Option<u32>, route: Option<&[u64]>, waypoints: &[u64], hidd
 /// The most presses of a keybind the page is told of at once.
 const MOST_KEYBIND_PRESSES: u32 = 10;
 
-/// `{"type":"keybind","action":"volumeUp"|"volumeDown"|"playPause"|"previousTrack"|"nextTrack"}`: the player
-/// pressed a keybind in the game.
-fn keybind_message(keybind: Keybind) -> String {
-    let action = match keybind {
-        Keybind::VolumeUp => "volumeUp",
-        Keybind::VolumeDown => "volumeDown",
-        Keybind::PlayPause => "playPause",
-        Keybind::PreviousTrack => "previousTrack",
-        Keybind::NextTrack => "nextTrack",
+/// `{"type":"keybind","action":"volumeUp"|"volumeDown"|"playPause"|"nextTrack"|"previousTrack"}`: the player
+/// pressed a keybind in the game, or `held` a volume key (`KEYBIND_HOLD_MS`): Volume up's the next song, Volume
+/// down's the one before.
+fn keybind_message(keybind: Keybind, held: bool) -> String {
+    let action = match (keybind, held) {
+        (Keybind::VolumeUp, false) => "volumeUp",
+        (Keybind::VolumeDown, false) => "volumeDown",
+        (Keybind::VolumeUp, true) => "nextTrack",
+        (Keybind::VolumeDown, true) => "previousTrack",
+        (Keybind::PlayPause, _) => "playPause",
     };
     serde_json::json!({ "type": "keybind", "action": action }).to_string()
 }
@@ -2287,6 +2412,28 @@ fn start_netease_music<'a>(
     netease_music.as_ref()
 }
 
+/// Player's own player, started as the page first plays (on the cabin page's profile, as YouTube Music's), the
+/// songs of `music` served to it; or `None` if it couldn't start.
+fn start_music_player<'a>(
+    music_player: &'a mut Option<music_folder::Player>,
+    stage: &Stage,
+    config: &Config,
+    music: Option<&std::path::Path>,
+) -> Option<&'a music_folder::Player> {
+    if music_player.is_none() {
+        let user_data = config.data_dir.join("webview2");
+        let page = config.data_dir.join("player-page");
+        match music_folder::Player::start(stage, config.width, config.height, &user_data, &page, music) {
+            Ok(started) => {
+                log!("[player] opened");
+                *music_player = Some(started)
+            }
+            Err(e) => startup::mark(&format!("host: Player couldn't start: {e}")),
+        }
+    }
+    music_player.as_ref()
+}
+
 /// YouTube Music's web player, started as the page first shows it (on the cabin page's profile, as YouTube's:
 /// they share the sign-in), or `None` if it couldn't start.
 fn start_youtube_music<'a>(
@@ -2361,7 +2508,7 @@ fn screen_message(layout: u32) -> String {
 }
 
 /// `{"type":"settings","truckStrip":"auto","wallpaper":"plain","iconSet":null,"iconStyle":"auto","equalizer":…}`: the
-/// settings the cabin page applies itself.
+/// settings the cabin page applies itself (its language among them: one chosen, or `null`, the game's).
 fn settings_message(settings: &settings::Settings) -> String {
     serde_json::json!({
         "type": "settings",
@@ -2377,6 +2524,9 @@ fn settings_message(settings: &settings::Settings) -> String {
         "character": settings.sound.character,
         "reflection": settings.sound.reflection.clamped(),
         "bass": settings.sound.bass.clamped(),
+        "buildings": settings.map.buildings,
+        "roads": settings.map.roads,
+        "language": settings.language.as_ref().map(|code| code.as_str()),
     })
     .to_string()
 }
@@ -2440,6 +2590,8 @@ enum PageMessage {
     Spectrum { on: bool },
     /// Whether what's under the cursor is light (it's drawn dark there: `cursor`).
     CursorLight { light: bool },
+    /// Where the cursor may be seen (`cursor::Area`): the CarPlay area, under its black corners.
+    CursorArea { area: cursor::Area },
     /// A command for YouTube's player (`youtube`): what to play, where it shows, and so on.
     Youtube { command: youtube::Command },
     /// A command for Spotify's web player (`spotify`): its sign-in, a question, its controls.
@@ -2452,15 +2604,17 @@ enum PageMessage {
     NeteaseMusic { command: netease_music::Command },
     /// A command for YouTube Music's web player (`youtubeMusic`): its sign-in, a question, its controls.
     YoutubeMusic { command: youtube_music::Command },
+    /// A command for Player's own player (`player`): what to play from the music folder, its controls.
+    Player { command: music_folder::Command },
     /// The text field selected on the page, a number that changes with every selection (0: none), for the
     /// player's own keyboard to type into (`typing`).
     Typing { selection: u32 },
     /// A change to the game's route (Maps' search): at a map node (its uid in hex) to go or add a stop; `id`
     /// comes back with the game's answer (`route_change`).
     Route { id: u32, action: PageRouteAction, node: Option<String> },
-    /// The routes to a map node (its uid in hex) from where the truck is, to offer before Go (`planner`);
-    /// `id` comes back with them.
-    Routes { id: u32, node: String },
+    /// The routes to a map node (its uid in hex), or to `also` if a route comes to that last (the other end of the lane
+    /// past the place), from where the truck is, to offer before Go (`planner`); `id` comes back with them.
+    Routes { id: u32, node: String, also: Option<String> },
     /// Go along the route at `index` of those offered for request `id`: handed to the game's GPS
     /// (`handover`); `{"type":"followed"}` comes back once the game follows it, or won't.
     Follow { id: u32, index: usize },
@@ -2519,8 +2673,9 @@ fn parse_page_message(message: &str) -> Option<PageMessage> {
 /// What the player's latest save says, for the page: `{"type":"garages","owned":["calais",...],
 /// "headquarters":"calais"}` (the cities whose garages they own, and their headquarters', `null` if none),
 /// `{"type":"mapBlock","hvt":true,"language":"tr_tr"}` (they play on a map by HVT, which WestPlay
-/// doesn't allow, and the game's language to say so in), and `{"type":"timeZones","on":true}` (their
-/// profile has the game's time zones on: the clock is the time where the truck is).
+/// doesn't allow, and the game's language to say so in), `{"type":"timeZones","on":true}` (their profile has
+/// the game's time zones on: the clock is the time where the truck is), and `{"type":"units","mph":true}` (its
+/// units are miles and mph; `null`: its options don't say).
 fn player_messages_for(player: &Player) -> Vec<String> {
     let garages = &player.garages;
     vec![
@@ -2528,6 +2683,7 @@ fn player_messages_for(player: &Player) -> Vec<String> {
             .to_string(),
         serde_json::json!({ "type": "mapBlock", "hvt": player.hvt_map, "language": player.language }).to_string(),
         serde_json::json!({ "type": "timeZones", "on": player.time_zones }).to_string(),
+        serde_json::json!({ "type": "units", "mph": player.mph }).to_string(),
     ]
 }
 
@@ -2547,16 +2703,20 @@ fn weather_message_for(weather: Option<Weather>) -> String {
 }
 
 /// The game's route for the page: `{"type":"route","id":5,"nodes":[[x,z,forward x,forward z,distance
-/// left],...]}` (its map nodes in order, metres; `"nodes":null` without a route), `{"type":"routePaths",
+/// left,height],...]}` (its map nodes in order, metres; `"nodes":null` without a route), `{"type":"routePaths",
 /// "id":5,"paths":[[2,[[x,z],...]],...],"maneuvers":[[2,"roundabout",-90.0,3],...],"shifts":[[3,6.5],...]}` (the ways through its
-/// junctions and the turns there, each by the node it starts at: the turn, its angle, a roundabout's exit)
-/// and `{"type":"routeNext","next":3}` (the next node ahead of the truck).
+/// junctions and the turns there, each by the node it starts at: the turn, its angle, a roundabout's exit),
+/// `{"type":"offeredWays","id":7,"index":1,"nodes":[[x,z,forward x,forward z],...],"paths":...,"shifts":...}` (one of the
+/// routes offered for a `routes` request) and `{"type":"routeNext","next":3}` (the next node ahead of the truck).
 fn route_message_for(update: &RouteUpdate) -> String {
+    let rounded = |shifts: &[(usize, f32)]| -> Vec<(usize, f32)> {
+        shifts.iter().map(|&(node, shift)| (node, (shift * 100.0).round() / 100.0)).collect()
+    };
     match update {
         RouteUpdate::Route { id, nodes, .. } => {
-            let nodes: Vec<[f32; 5]> = nodes
+            let nodes: Vec<[f32; 6]> = nodes
                 .iter()
-                .map(|n| [n.position[0], n.position[1], n.forward[0], n.forward[1], n.distance_left])
+                .map(|n| [n.position[0], n.position[1], n.forward[0], n.forward[1], n.distance_left, n.height])
                 .collect();
             serde_json::json!({ "type": "route", "id": id, "nodes": nodes }).to_string()
         }
@@ -2571,9 +2731,16 @@ fn route_message_for(update: &RouteUpdate) -> String {
                     serde_json::json!([span, maneuver.turn.name(), maneuver.angle.round(), exit])
                 })
                 .collect();
-            let shifts: Vec<(usize, f32)> =
-                shifts.iter().map(|&(node, shift)| (node, (shift * 100.0).round() / 100.0)).collect();
+            let shifts = rounded(shifts);
             serde_json::json!({ "type": "routePaths", "id": id, "paths": paths, "maneuvers": maneuvers, "shifts": shifts })
+                .to_string()
+        }
+        RouteUpdate::Offered { id, index, route } => {
+            let nodes: Vec<[f32; 4]> =
+                route.nodes.iter().zip(&route.ways.forward).map(|(at, way)| [at[0], at[1], way[0], way[1]]).collect();
+            let paths: Vec<_> = route.ways.junctions.iter().map(|junction| (junction.span, &junction.path)).collect();
+            let shifts = rounded(&route.ways.shifts);
+            serde_json::json!({ "type": "offeredWays", "id": id, "index": index, "nodes": nodes, "paths": paths, "shifts": shifts })
                 .to_string()
         }
         RouteUpdate::Next(next) => serde_json::json!({ "type": "routeNext", "next": next }).to_string(),
@@ -2596,9 +2763,32 @@ fn pump_messages() {
     }
 }
 
+/// A language tag as the cab asks the web players to answer in (`de`, `pt-PT`, `es-419`, `zh-Hans-CN`): a
+/// language's letters, then up to two parts of letters or digits, each after a `-`. Nothing else of the cab's
+/// goes into a page's requests as a language.
+pub(crate) fn is_language_tag(tag: &str) -> bool {
+    let mut parts = tag.split('-');
+    let language = parts.next().unwrap_or_default();
+    let rest: Vec<&str> = parts.collect();
+    (2..=3).contains(&language.len())
+        && language.bytes().all(|b| b.is_ascii_alphabetic())
+        && rest.len() <= 2
+        && rest.iter().all(|part| (2..=4).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_alphanumeric()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{PageMessage, PageRouteAction, parse_page_message, screen_message, settings_message};
+
+    #[test]
+    fn a_language_tag_is_a_language_and_up_to_two_parts() {
+        for tag in ["tr", "de", "en-GB", "pt-PT", "es-419", "sr-Latn", "zh-TW", "zh-Hans-CN", "fil"] {
+            assert!(super::is_language_tag(tag), "{tag}");
+        }
+        for tag in ["", "d", "tr&x=1", "de_DE", "de-", "-de", "de-DE-x-y", "de-ABCDE", "de DE", "deutsch"] {
+            assert!(!super::is_language_tag(tag), "{tag}");
+        }
+    }
 
     #[test]
     fn a_game_run_normally_isnt_elevated() {
@@ -2724,35 +2914,18 @@ mod tests {
             })
         );
         assert_eq!(parse_page_message(r#"{"type":"equalizer","bass":400}"#), None);
-        assert_eq!(
-            parse_page_message(r#"{"type":"reverb","enabled":true,"size":70,"amount":35}"#),
-            Some(PageMessage::Reverb { enabled: true, size: 70, amount: 35 })
-        );
-        assert_eq!(
-            parse_page_message(r#"{"type":"character","character":"impulse"}"#),
-            Some(PageMessage::Character { character: crate::speakers::CabinCharacter::Impulse })
-        );
-        assert_eq!(
-            parse_page_message(r#"{"type":"reflection","amount":80}"#),
-            Some(PageMessage::Reflection { amount: 80 })
-        );
-        assert_eq!(
-            parse_page_message(r#"{"type":"soundEnabled","enabled":false}"#),
-            Some(PageMessage::SoundEnabled { enabled: false })
-        );
-        assert_eq!(
-            parse_page_message(r#"{"type":"preset","id":"cabin-a"}"#),
-            Some(PageMessage::Preset { id: Some("cabin-a".into()) })
-        );
-        assert_eq!(parse_page_message(r#"{"type":"preset","id":null}"#), Some(PageMessage::Preset { id: None }));
-        assert_eq!(
-            parse_page_message(r#"{"type":"bass","cutoff":70}"#),
-            Some(PageMessage::Bass { cutoff: 70 })
-        );
         assert_eq!(parse_page_message(r#"{"type":"spectrum","on":true}"#), Some(PageMessage::Spectrum { on: true }));
         assert_eq!(
             parse_page_message(r#"{"type":"cursorLight","light":true}"#),
             Some(PageMessage::CursorLight { light: true })
+        );
+        assert_eq!(
+            parse_page_message(
+                r#"{"type":"cursorArea","area":{"left":2,"top":2,"right":1278,"bottom":718,"radius":76.7}}"#
+            ),
+            Some(PageMessage::CursorArea {
+                area: crate::cursor::Area { left: 2.0, top: 2.0, right: 1278.0, bottom: 718.0, radius: 76.7 }
+            })
         );
         assert_eq!(
             parse_page_message(r#"{"type":"route","id":3,"action":"addStop","node":"478ef4c4cd160002"}"#),
@@ -2771,16 +2944,6 @@ mod tests {
             parse_page_message(r#"{"type":"youtube","command":{"action":"pause"}}"#),
             Some(PageMessage::Youtube { command: crate::youtube::Command::Pause })
         );
-        assert_eq!(
-            parse_page_message(r#"{"type":"qqMusic","command":{"action":"pause"}}"#),
-            Some(PageMessage::QqMusic { command: crate::qq_music::Command::Pause })
-        );
-        assert!(matches!(
-            parse_page_message(
-                r#"{"type":"qqMusic","command":{"action":"ask","id":3,"question":{"ask":"search","query":"周杰伦"}}}"#
-            ),
-            Some(PageMessage::QqMusic { command: crate::qq_music::Command::Ask { id: 3, .. } })
-        ));
         assert_eq!(parse_page_message(r#"{"type":"other"}"#), None);
         assert_eq!(parse_page_message("not json"), None);
     }
@@ -2866,13 +3029,10 @@ mod tests {
         requests.youtube.request(AccountAction::SignOut);
         requests.youtube.request(AccountAction::SignIn);
         requests.spotify.request(AccountAction::Check);
-        requests.qq_music.request(AccountAction::SignIn);
         assert_eq!(requests.youtube.take(), Some(AccountAction::SignIn));
         assert_eq!(requests.youtube.take(), None);
         assert_eq!(requests.spotify.take(), Some(AccountAction::Check));
         assert_eq!(requests.spotify.take(), None);
-        assert_eq!(requests.qq_music.take(), Some(AccountAction::SignIn));
-        assert_eq!(requests.qq_music.take(), None);
         // The companion hears whether YouTube is signed in, and nothing more of the account.
         let status = super::Status { youtube_signed_in: Some(true), youtube_signing_in: false, ..Default::default() };
         let json = serde_json::to_value(&status).unwrap();
@@ -2885,10 +3045,6 @@ mod tests {
         let json = serde_json::to_value(&status).unwrap();
         let apple_music = (json["appleMusicSignedIn"].as_bool(), json["appleMusicSigningIn"].as_bool());
         assert_eq!(apple_music, (Some(true), Some(true)));
-        let status = super::Status { qq_music_signed_in: Some(false), qq_music_signing_in: true, ..Default::default() };
-        let json = serde_json::to_value(&status).unwrap();
-        let qq_music = (json["qqMusicSignedIn"].as_bool(), json["qqMusicSigningIn"].as_bool());
-        assert_eq!(qq_music, (Some(false), Some(true)));
     }
 
     #[test]
@@ -2926,14 +3082,19 @@ mod tests {
                 "character": "full",
                 "reflection": { "amount": 100 },
                 "bass": { "cutoff": 60 },
+                "buildings": true,
+                "roads": true,
+                "language": null,
             })
         );
         settings.screen.truck_strip = crate::settings::TruckStrip::Off;
         settings.sound.equalizer = crate::speakers::Equalizer { bass: -9, mid: 2, treble: 6, ..Default::default() };
         settings.look.wallpaper = Some("custom:Dusk".into());
         settings.look.icon_set = Some("Retro".into());
+        settings.language = crate::settings::LanguageCode::new("de_de");
         let message: serde_json::Value = serde_json::from_str(&settings_message(&settings)).unwrap();
         assert_eq!(message["truckStrip"], "off");
+        assert_eq!(message["language"], "de_de");
         assert_eq!(message["wallpaper"], "custom:Dusk");
         assert_eq!(message["iconSet"], "Retro");
         // Within the range, whatever the file says.
@@ -2997,13 +3158,15 @@ mod tests {
             hvt_map: true,
             language: Some("tr_tr".into()),
             time_zones: true,
+            mph: Some(true),
         };
         assert_eq!(
             super::player_messages_for(&player),
             [
                 r#"{"headquarters":"calais","owned":["calais","dover"],"type":"garages"}"#,
                 r#"{"hvt":true,"language":"tr_tr","type":"mapBlock"}"#,
-                r#"{"on":true,"type":"timeZones"}"#
+                r#"{"on":true,"type":"timeZones"}"#,
+                r#"{"mph":true,"type":"units"}"#
             ]
         );
     }
@@ -3030,10 +3193,10 @@ mod tests {
     fn route_messages_carry_the_nodes_and_the_progress() {
         use crate::route::{RouteNode, RouteUpdate};
         use westplay_mapdata::junctions::{Maneuver, Turn};
-        let node = RouteNode { position: [1.0, 2.0], forward: [0.0, -1.0], uid: 7, distance_left: 1500.0 };
+        let node = RouteNode { position: [1.0, 2.0], height: 3.0, forward: [0.0, -1.0], uid: 7, distance_left: 1500.0 };
         assert_eq!(
             super::route_message_for(&RouteUpdate::Route { id: 5, nodes: vec![node], waypoints: vec![] }),
-            r#"{"id":5,"nodes":[[1.0,2.0,0.0,-1.0,1500.0]],"type":"route"}"#
+            r#"{"id":5,"nodes":[[1.0,2.0,0.0,-1.0,1500.0,3.0]],"type":"route"}"#
         );
         assert_eq!(super::route_message_for(&RouteUpdate::Next(3)), r#"{"next":3,"type":"routeNext"}"#);
         assert_eq!(
@@ -3052,21 +3215,22 @@ mod tests {
     }
 
     #[test]
+    fn the_routes_offered_carry_what_the_game_route_is_drawn_from() {
+        use crate::route::{OfferedWays, RouteUpdate};
+        use westplay_mapdata::junctions::{Junction, Ways};
+        let junction = Junction { span: 0, path: vec![[1.0, 2.0], [3.0, 4.0]], maneuver: None };
+        let ways = Ways { junctions: vec![junction], shifts: vec![(1, 6.504)], forward: vec![[0.0, -1.0], [1.0, 0.0]] };
+        let route = OfferedWays { nodes: vec![[1.0, 2.0], [3.0, 4.0]], ways };
+        assert_eq!(
+            super::route_message_for(&RouteUpdate::Offered { id: 7, index: 1, route }),
+            r#"{"id":7,"index":1,"nodes":[[1.0,2.0,0.0,-1.0],[3.0,4.0,1.0,0.0]],"paths":[[0,[[1.0,2.0],[3.0,4.0]]]],"shifts":[[1,6.5]],"type":"offeredWays"}"#
+        );
+    }
+
+    #[test]
     fn screen_message_names_the_layout() {
         assert_eq!(screen_message(0), r#"{"layout":null,"type":"screen"}"#);
         assert_eq!(screen_message(1), r#"{"layout":"generic","type":"screen"}"#);
         assert_eq!(screen_message(999), r#"{"layout":null,"type":"screen"}"#);
-    }
-
-    #[test]
-    fn keybind_messages_include_track_skipping() {
-        assert_eq!(
-            super::keybind_message(super::Keybind::PreviousTrack),
-            r#"{"action":"previousTrack","type":"keybind"}"#
-        );
-        assert_eq!(
-            super::keybind_message(super::Keybind::NextTrack),
-            r#"{"action":"nextTrack","type":"keybind"}"#
-        );
     }
 }

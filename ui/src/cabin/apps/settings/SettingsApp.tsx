@@ -13,6 +13,7 @@ import {
   AppearanceGlyph,
   CheckGlyph,
   ChevronGlyph,
+  ClockGlyph,
   DashboardGlyph,
   NowPlayingGlyph,
   SoundGlyph,
@@ -84,6 +85,8 @@ function PageContent({ page }: { page: SettingsPage }) {
       return <BassPage />
     case 'textSize':
       return <TextSizePage />
+    case 'dateTime':
+      return <DateTimePage />
   }
 }
 
@@ -138,6 +141,29 @@ function ListPage() {
           label={text.settings.sound}
           onOpen={() => open('sound')}
         />
+      </Group>
+      <Group>
+        <NavRow
+          tile="var(--apple-gray)"
+          icon={<ClockGlyph />}
+          label={text.settings.dateTime}
+          onOpen={() => open('dateTime')}
+        />
+      </Group>
+    </Page>
+  )
+}
+
+/** Date & Time: 24-Hour Time, as iOS's (owner 2026-10-28); off, every time WestPlay shows is 12-hour, with AM and
+ * PM but in the sidebar. */
+function DateTimePage() {
+  const text = useText()
+  const hours24 = useCabin((state) => state.hours24)
+  const setHours24 = useCabin((state) => state.setHours24)
+  return (
+    <Page title={text.settings.dateTime}>
+      <Group>
+        <SwitchRow label={text.settings.hours24} on={hours24} onToggle={setHours24} />
       </Group>
     </Page>
   )
@@ -335,6 +361,8 @@ function DashboardPage() {
   const text = useText()
   const widgets = useCabin((state) => state.dashboardWidgets)
   const setWidget = useCabin((state) => state.setDashboardWidget)
+  const mapGrows = useCabin((state) => state.mapGrows)
+  const setMapGrows = useCabin((state) => state.setMapGrows)
   const names: Record<DashboardWidget, string> = {
     nowPlaying: text.nowPlaying,
     destination: text.destination,
@@ -346,6 +374,9 @@ function DashboardPage() {
         {DASHBOARD_WIDGETS.map((widget) => (
           <SwitchRow key={widget} label={names[widget]} on={widgets[widget]} onToggle={(on) => setWidget(widget, on)} />
         ))}
+      </Group>
+      <Group footer={text.settings.mapWhileDrivingFooter}>
+        <SwitchRow label={text.settings.mapWhileDriving} on={mapGrows} onToggle={setMapGrows} />
       </Group>
     </Page>
   )

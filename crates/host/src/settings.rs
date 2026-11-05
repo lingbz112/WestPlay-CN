@@ -16,7 +16,7 @@ use westplay_shared::{KEYBIND_COUNT, Keybind, keybind_value};
 
 /// Version of the settings file format. Bump it, and teach [`migrate`] the step, when a setting's meaning
 /// or shape changes (adding a setting needs neither: it takes its default).
-pub const SETTINGS_VERSION: u32 = 3;
+pub const SETTINGS_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -33,6 +33,51 @@ pub struct Settings {
     pub graphics: GraphicsSettings,
     #[serde(deserialize_with = "lenient")]
     pub sound: SoundSettings,
+    #[serde(deserialize_with = "lenient")]
+    pub map: MapSettings,
+    /// The language WestPlay speaks, in the cab and the companion (the companion's Setup page): one of the
+    /// game's, by its code (`tr_tr`), or `None`: the game's own (owner 2026-11-03).
+    #[serde(deserialize_with = "lenient")]
+    pub language: Option<LanguageCode>,
+}
+
+/// One of the game's language codes, as its `config.cfg` writes them (`tr_tr`, `pt_br`): two letters, `_`, two.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct LanguageCode(String);
+
+impl LanguageCode {
+    pub fn new(code: &str) -> Option<Self> {
+        let bytes = code.as_bytes();
+        let letters = |part: &[u8]| part.iter().all(u8::is_ascii_lowercase);
+        (bytes.len() == 5 && bytes[2] == b'_' && letters(&bytes[..2]) && letters(&bytes[3..]))
+            .then(|| Self(code.to_owned()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for LanguageCode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let code = String::deserialize(deserializer)?;
+        Self::new(&code).ok_or_else(|| serde::de::Error::custom(format!("not a language: {code}")))
+    }
+}
+
+/// The cab's map (the companion's Map page): whether its buildings rise from it, and its bridges and ramps.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MapSettings {
+    pub buildings: bool,
+    pub roads: bool,
+}
+
+impl Default for MapSettings {
+    fn default() -> Self {
+        Self { buildings: true, roads: true }
+    }
 }
 
 /// The sound the players play: its tone (the cab's Settings › Equalizer), the same in every truck. As iOS's
@@ -255,15 +300,13 @@ impl<'de> Deserialize<'de> for KeyCode {
 }
 
 /// The keys for what WestPlay does from the game (owner 2026-10-21: every keybind customizable in the
-/// companion): the playing app's volume up and down a step, play or pause, and the previous or next track.
+/// companion): the playing app's volume up and down a step, and play or pause it.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keybinds {
     pub volume_up: Binding,
     pub volume_down: Binding,
     pub play_pause: Binding,
-    pub previous_track: Binding,
-    pub next_track: Binding,
 }
 
 impl<'de> Deserialize<'de> for Keybinds {
@@ -279,25 +322,16 @@ impl<'de> Deserialize<'de> for Keybinds {
             volume_up: binding("volumeUp", defaults.volume_up),
             volume_down: binding("volumeDown", defaults.volume_down),
             play_pause: binding("playPause", defaults.play_pause),
-            previous_track: binding("previousTrack", defaults.previous_track),
-            next_track: binding("nextTrack", defaults.next_track),
         })
     }
 }
 
 impl Default for Keybinds {
-    /// Volume down and up are the interaction key with 1 and 3 (Alt+1 and Alt+3). Play/pause and the track keys
-    /// use the keyboard's own media keys, alone, so they work anywhere in the game and do not claim a driving
-    /// key.
+    /// The interaction key with 1, 2 and 3 (as promised to the players who asked: Alt+1, Alt+2, Alt+3), in a
+    /// row as on a stereo (owner 2026-10-21): volume down, play/pause between, volume up.
     fn default() -> Self {
         let with_key = |code| Binding { key: KeyCode(code), with_interaction_key: true };
-        Self {
-            volume_down: with_key(0x31),
-            volume_up: with_key(0x33),
-            play_pause: Binding { key: KeyCode(0xb3), with_interaction_key: false },
-            previous_track: Binding { key: KeyCode(0xb1), with_interaction_key: false },
-            next_track: Binding { key: KeyCode(0xb0), with_interaction_key: false },
-        }
+        Self { volume_down: with_key(0x31), play_pause: with_key(0x32), volume_up: with_key(0x33) }
     }
 }
 
@@ -309,8 +343,6 @@ impl Keybinds {
                 Keybind::VolumeUp => self.volume_up,
                 Keybind::VolumeDown => self.volume_down,
                 Keybind::PlayPause => self.play_pause,
-                Keybind::PreviousTrack => self.previous_track,
-                Keybind::NextTrack => self.next_track,
             };
             keybind_value(binding.key.virtual_key(), binding.with_interaction_key)
         })
@@ -406,14 +438,6 @@ fn migrate(mut file: serde_json::Value, version: u32) -> serde_json::Value {
         && let Some(named) = key.as_str().and_then(KeyCode::named)
     {
         *key = serde_json::Value::from(named.virtual_key());
-    }
-    // 3: play/pause leaves the screen's interaction key and uses the keyboard's media key, alone.
-    if version < 3
-        && file.pointer("/keybinds/playPause")
-            == Some(&serde_json::json!({ "key": 0x32, "withInteractionKey": true }))
-        && let Some(play_pause) = file.pointer_mut("/keybinds/playPause")
-    {
-        *play_pause = serde_json::json!({ "key": 0xb3, "withInteractionKey": false });
     }
     file
 }
@@ -549,12 +573,15 @@ mod tests {
                 reflection: crate::speakers::CabinReflection { amount: 80 },
                 bass: crate::speakers::BassManagement { cutoff: 70 },
             },
+            map: MapSettings { buildings: false, roads: false },
+            language: LanguageCode::new("pt_br"),
         };
         let json = to_json(&settings);
-        assert!(json.contains("\"version\": 3"), "{json}");
+        assert!(json.contains("\"version\": 2"), "{json}");
         assert!(json.contains("\"key\": 5"), "{json}");
         assert!(json.contains("\"mode\": \"toggle\""), "{json}");
         assert!(json.contains("\"truckStrip\": \"off\""), "{json}");
+        assert!(json.contains("\"language\": \"pt_br\""), "{json}");
         let saved: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(saved["sound"]["reflection"]["amount"], 80, "{json}");
         assert_eq!(saved["sound"]["enabled"], true, "{json}");
@@ -574,24 +601,27 @@ mod tests {
         assert_eq!(partial.keybinds, Keybinds::default());
         let with_key = |code| Binding { key: KeyCode::new(code).unwrap(), with_interaction_key: true };
         assert_eq!(
-            [partial.keybinds.volume_down, partial.keybinds.volume_up],
-            [with_key(0x31), with_key(0x33)]
-        );
-        assert_eq!(
-            partial.keybinds.play_pause,
-            Binding { key: KeyCode::new(0xb3).unwrap(), with_interaction_key: false }
-        );
-        assert_eq!(
-            [partial.keybinds.previous_track, partial.keybinds.next_track],
-            [
-                Binding { key: KeyCode::new(0xb1).unwrap(), with_interaction_key: false },
-                Binding { key: KeyCode::new(0xb0).unwrap(), with_interaction_key: false },
-            ]
+            [partial.keybinds.volume_down, partial.keybinds.play_pause, partial.keybinds.volume_up],
+            [with_key(0x31), with_key(0x32), with_key(0x33)]
         );
         // Files from before the truck strip was a setting keep it on Auto.
         assert_eq!(partial.screen.truck_strip, TruckStrip::Auto);
         // And from before the GPU was: WestPlay picks it.
         assert_eq!(partial.graphics.gpu, None);
+        // And from before the map's buildings and roads could be switched: they stay on.
+        assert!(partial.map.buildings && partial.map.roads);
+        // And from before the language could be chosen: the game's.
+        assert_eq!(partial.language, None);
+    }
+
+    #[test]
+    fn a_language_is_one_of_the_games_codes_or_the_games_own() {
+        assert_eq!(parse(r#"{"language": "de_de"}"#).unwrap().language, LanguageCode::new("de_de"));
+        for bad in [r#""de""#, r#""DE_DE""#, r#""de-de""#, r#""de_de&x""#, "7", "null"] {
+            let settings = parse(&format!(r#"{{"language": {bad}, "map": {{"roads": false}}}}"#)).unwrap();
+            assert_eq!(settings.language, None, "{bad}");
+            assert!(!settings.map.roads, "{bad}");
+        }
     }
 
     #[test]
@@ -624,36 +654,6 @@ mod tests {
         );
         // Not an object at all: every default.
         assert_eq!(parse(r#"{"version": 2, "keybinds": 4}"#).unwrap().keybinds, defaults);
-    }
-
-    #[test]
-    fn play_pause_moves_to_the_media_key_without_losing_a_custom_binding() {
-        let untouched = parse(
-            r#"{"version": 2, "keybinds": {
-                "playPause": {"key": 50, "withInteractionKey": true},
-                "previousTrack": {"key": 103, "withInteractionKey": false}
-            }}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            untouched.keybinds.play_pause,
-            Binding { key: KeyCode::new(0xb3).unwrap(), with_interaction_key: false }
-        );
-        assert_eq!(
-            untouched.keybinds.previous_track,
-            Binding { key: KeyCode::new(0x67).unwrap(), with_interaction_key: false }
-        );
-
-        let custom = parse(
-            r#"{"version": 2, "keybinds": {
-                "playPause": {"key": 104, "withInteractionKey": false}
-            }}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            custom.keybinds.play_pause,
-            Binding { key: KeyCode::new(0x68).unwrap(), with_interaction_key: false }
-        );
     }
 
     #[test]

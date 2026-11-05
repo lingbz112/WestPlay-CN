@@ -1,7 +1,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { TextField } from '../../keyboard/TextField'
-import { useLanguage, useText } from '../../state/text'
+import { useText } from '../../state/text'
 import {
   addToLibrary,
   type AppleMusicItem,
@@ -660,7 +660,6 @@ function LibraryShelfPage({
   shown: boolean
 }) {
   const text = useText()
-  const language = useLanguage()
   const look = useAppleMusic((state) => state.libraryLooks[shelf])
   const asked = useAsked(
     {
@@ -668,8 +667,7 @@ function LibraryShelfPage({
       shelf,
       ...(look.sort ? { sort: look.sort } : {}),
       ...(folder ? { folder: folder.id } : {}),
-      // Apple Music's own pages are English or Turkish (a Chinese game gets English there, as YouTube Music does).
-      language: language === 'tr' ? 'tr' : 'en',
+      language: text.locale,
     },
     useShownAgain(shown),
   )

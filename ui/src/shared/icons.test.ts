@@ -15,16 +15,19 @@ const ROLES: AppIconRole[] = [
   'podcasts',
   'messages',
   'phone',
+  'calendar',
   'settings',
   'weather',
   'youtube',
   'youtubeMusic',
+  'player',
 ]
 
 describe('appIcon', () => {
   it('gives every role WestPlay’s icon in the look asked for, and each file is there', () => {
     for (const role of ROLES) {
       for (const look of ['light', 'dark'] as const) {
+        // QQ Music's and NetEase Cloud Music's are their companies' own marks, a .webp and a .png.
         if (role !== 'qqMusic' && role !== 'neteaseMusic') expect(FILES).toContain(appIcon(role, look))
       }
     }

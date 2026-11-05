@@ -30,6 +30,13 @@ export interface Settings {
   graphics: {
     gpu: string | null
   }
+  /** The cab's map: whether its buildings rise from it, and its bridges and ramps. */
+  map: {
+    buildings: boolean
+    roads: boolean
+  }
+  /** The language WestPlay speaks in the cab and here: one of the game's (`de_de`), or `null`: the game's. */
+  language: string | null
 }
 
 /** Mirrors `westplay_host::settings::TruckStrip`: the truck's own strip beside WestPlay, kept or not. */
@@ -55,11 +62,11 @@ export const DEFAULT_KEY = KEY_PRESETS.leftAlt
 /** Mirrors `westplay_host::settings::InteractionMode`. */
 export type InteractionMode = 'hold' | 'toggle'
 
-/** Mirrors `westplay_host::settings::Keybinds`: volume, play/pause and track skipping. */
-export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause' | 'previousTrack' | 'nextTrack'
+/** Mirrors `westplay_host::settings::Keybinds`: the playing music's volume up and down, and play/pause. */
+export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause'
 
-/** In transport order: previous, volume down, play/pause, volume up, next. */
-export const KEYBIND_IDS: KeybindId[] = ['previousTrack', 'volumeDown', 'playPause', 'volumeUp', 'nextTrack']
+/** In a row as their default keys are (1, 2, 3), as on a stereo: volume down, play/pause, volume up. */
+export const KEYBIND_IDS: KeybindId[] = ['volumeDown', 'playPause', 'volumeUp']
 
 /** Mirrors `westplay_host::settings::Binding`: a key, pressed alone or while using the screen (holding its
  * key, or toggled on). */

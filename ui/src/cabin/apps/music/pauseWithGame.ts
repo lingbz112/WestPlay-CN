@@ -7,10 +7,10 @@ export const appleMusicPlayer: MusicPlayer = {
   playingHere: playingNow,
   pauseHere: pauseNow,
   resumeHere: resumeNow,
-  skipHere: skip,
   volume: () => useAppleMusic.getState().playback?.volume ?? null,
   sendVolume: (share) => appleMusic({ action: 'volume', percent: Math.round(share * 100) }),
   setVolume: (share) => setVolume(share, true),
+  skip,
   // Started: playing, its sound come (asked to play, it shows playing at once, loading until Apple Music
   // confirms: the fade in waits for that).
   subscribe: (changed) =>

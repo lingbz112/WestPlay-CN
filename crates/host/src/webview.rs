@@ -757,6 +757,17 @@ impl OffscreenWebView {
         self.serve(host_name, folder, true)
     }
 
+    /// Serves nothing more at `https://{host_name}/` (a folder mapped there before: Player's music folder, as the
+    /// game played changes).
+    pub fn unmap_folder(&self, host_name: &str) {
+        // SAFETY: the WebView is alive as long as `self`; the name lives through the call.
+        unsafe {
+            if let Ok(view) = self.webview.cast::<ICoreWebView2_3>() {
+                let _ = view.ClearVirtualHostNameToFolderMapping(&HSTRING::from(host_name));
+            }
+        }
+    }
+
     fn serve(&self, host_name: &str, folder: &Path, any_page: bool) -> windows::core::Result<()> {
         // WebView2 serves nothing from a folder named in Windows' long form (`\\?\C:\…`, as an installed
         // WestPlay's own folder comes): every file fails with ERR_INVALID_URL. Named plainly, it does.

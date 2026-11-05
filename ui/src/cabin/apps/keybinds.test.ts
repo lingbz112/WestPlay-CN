@@ -5,7 +5,7 @@ import type { MusicPlayer } from './musicWithGame'
 /** A player at `volume`, playing here or not; `start()` as it begins playing here. */
 function player(volume: number | null, playing = false) {
   const listeners = new Set<(started: boolean) => void>()
-  const state = { playing, volume, pauses: 0, resumes: 0, skips: [] as (1 | -1)[] }
+  const state = { playing, volume, pauses: 0, resumes: 0, skips: [] as number[] }
   const it: MusicPlayer = {
     name: `player-${Math.random()}`,
     playingHere: () => state.playing,
@@ -17,11 +17,13 @@ function player(volume: number | null, playing = false) {
       state.playing = true
       state.resumes += 1
     },
-    skipHere: (direction) => state.skips.push(direction),
     volume: () => state.volume,
     sendVolume: () => {},
     setVolume: (share) => {
       state.volume = share
+    },
+    skip: (direction) => {
+      state.skips.push(direction)
     },
     subscribe: (changed) => {
       listeners.add(changed)
@@ -61,6 +63,18 @@ describe('keybinds', () => {
     expect(binds.press('volumeUp')).toEqual({ volume: 0.55 })
   })
 
+  it("changes the song of the player playing here as its own Next and Back, a volume key held", () => {
+    const spotify = player(0.5)
+    const youtube = player(0.8, true)
+    const binds = keybinds([spotify.it, youtube.it])
+    expect(binds.press('nextTrack')).toBeNull()
+    expect(binds.press('previousTrack')).toBeNull()
+    expect(youtube.state.skips).toEqual([1, -1])
+    // The volume as it was: a hold isn't a press.
+    expect(youtube.state.volume).toBe(0.8)
+    expect(spotify.state.skips).toEqual([])
+  })
+
   it('does nothing with no player played yet, or one without a volume', () => {
     const spotify = player(null)
     const binds = keybinds([spotify.it])
@@ -68,16 +82,6 @@ describe('keybinds', () => {
     expect(spotify.state.resumes).toBe(0)
     spotify.start()
     expect(binds.press('volumeUp')).toBeNull()
-  })
-
-  it('skips the current player to its previous or next track', () => {
-    const spotify = player(0.5)
-    const youtube = player(0.8, true)
-    const binds = keybinds([spotify.it, youtube.it])
-    binds.press('previousTrack')
-    binds.press('nextTrack')
-    expect(spotify.state.skips).toEqual([])
-    expect(youtube.state.skips).toEqual([-1, 1])
   })
 
   it('stops following the players once stopped', () => {

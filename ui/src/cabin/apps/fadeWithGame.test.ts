@@ -16,10 +16,10 @@ function player(volume: number | null, playing = true) {
     resumeHere: () => {
       state.resumes += 1
     },
-    skipHere: () => {},
     volume: () => volume,
     sendVolume: (share) => state.sent.push(share),
     setVolume: () => {},
+    skip: () => {},
     subscribe: (changed) => {
       listeners.add(changed)
       return () => listeners.delete(changed)

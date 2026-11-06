@@ -1074,6 +1074,16 @@ mod tests {
         assert!(screen_supported(layout("daf-2021"), "vehicle.daf.2021"));
         assert!(screen_supported(layout("iveco-sway"), "vehicle.iveco.sway"));
         assert!(!screen_supported(screen_layouts().len(), "vehicle.scania.s_2016"));
+ 
+        // ATS Trucks/Cars
+        assert!(screen_supported(layout("ford"), "vehicle.ford.bronco_24"));
+        assert!(screen_supported(layout("ford"), "vehicle.ford.f150_23"));
+        assert!(screen_supported(layout("kenworth"), "vehicle.kenworth.t680_2022"));
+        assert!(screen_supported(layout("volvo-vnl"), "vehicle.volvo.vnl2018"));
+        assert!(screen_supported(layout("volvo-vnl"), "vehicle.volvo.vnl2025"));
+        assert!(screen_supported(layout("westernstar"), "vehicle.westernstar.57x"));
+        assert!(screen_supported(layout("westernstar"), "vehicle.westernstar.5700xe"));
+
     }
 
     #[test]

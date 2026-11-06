@@ -37,3 +37,12 @@ travego-16-23     ui/dashboard/westplay_travego_16_23_gps.sii
 setra-516         ui/dashboard/gps.dlc_toys.sii
 setra-531         ui/dashboard/westplay_setra_531_gps.sii
 man-lions-coach   ui/dashboard/westplay_man_lions_coach_gps.sii
+
+#Road Trip: Ford        vehicle.ford.bronco_24 vehicle.ford.f150_23
+ford              ui/dashboard/ford_bronco_gps_24.sii ui/dashboard/ford_f150_gps_23.sii 
+#Kenworth T680 2022     vehicle.kenworth.t680_2022
+kenworth          ui/dashboard/kenworth_t680_2022_gps.sii 
+#Volvo VNL 2018/2025    vehicle.volvo.vnl2018 vehicle.volvo.vnl2025
+volvo-vnl         ui/dashboard/volvo_vnl2018_gps.sii ui/dashboard/volvo_vnl2025_gps.sii
+#Westernstar 57x/5700xe vehicle.westernstar.57x vehicle.westernstar.5700xe
+westernstar       ui/dashboard/westernstar_57x_gps.sii ui/dashboard/westernstar_5700xe_gps.sii

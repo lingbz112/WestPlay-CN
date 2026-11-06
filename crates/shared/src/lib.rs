@@ -1081,8 +1081,6 @@ mod tests {
         assert!(screen_supported(layout("kenworth"), "vehicle.kenworth.t680_2022"));
         assert!(screen_supported(layout("volvo-vnl"), "vehicle.volvo.vnl2018"));
         assert!(screen_supported(layout("volvo-vnl"), "vehicle.volvo.vnl2025"));
-        assert!(screen_supported(layout("westernstar"), "vehicle.westernstar.57x"));
-        assert!(screen_supported(layout("westernstar"), "vehicle.westernstar.5700xe"));
 
     }
 

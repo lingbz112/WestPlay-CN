@@ -30,7 +30,7 @@
 
 /* The top bar and the tabs keep their type whatever the text size, as iOS's bars do. */
 .shell .ytm-top-bar {
-  --text-scale: 1;
+  /* The top bar and the tabs follow the player's text size too (they used to keep their own). */
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1047,7 +1047,6 @@
 }
 
 .shell .ytm-tabs {
-  --text-scale: 1;
   display: flex;
   justify-content: center;
   gap: 40px;

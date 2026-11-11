@@ -1,4 +1,13 @@
-import { capital, deletedWith, type Key, type Language, type Layer, otherLanguage, typedWith } from './layouts'
+import {
+  capital,
+  deletedWith,
+  type Key,
+  keyboardPair,
+  type Language,
+  type Layer,
+  nextKeyboard,
+  typedWith,
+} from './layouts'
 
 /** Shift: off, for the next letter only, or locked on (caps lock, by tapping it twice). */
 export type Shift = 'off' | 'once' | 'locked'
@@ -6,10 +15,10 @@ export type Shift = 'off' | 'once' | 'locked'
 export interface KeyboardState {
   layer: Layer
   shift: Shift
-  /** The keyboard showing: the language's own, or English's (the globe key goes between them). */
+  /** The keyboard showing (`keyboards`' one). */
   language: Language
-  /** The language's own keyboard. */
-  own: Language
+  /** The keyboards the globe key goes between, in its order (`layouts.ts`'s `keyboardPair`). */
+  keyboards: Language[]
   /** When shift was last tapped (ms), to tell a double tap. */
   shiftTappedAt: number | null
 }
@@ -17,8 +26,8 @@ export interface KeyboardState {
 /** How soon after the first a second tap on shift locks it, ms (iOS's feel). */
 export const DOUBLE_TAP_MS = 350
 
-export function initialKeyboard(language: Language, own: Language = language): KeyboardState {
-  return { layer: 'letters', shift: 'off', language, own, shiftTappedAt: null }
+export function initialKeyboard(language: Language, keyboards: Language[] = keyboardPair(language)): KeyboardState {
+  return { layer: 'letters', shift: 'off', language, keyboards, shiftTappedAt: null }
 }
 
 /** What a key press does: the keyboard and text after it, and whether it submits or puts the keyboard away. */
@@ -45,6 +54,9 @@ export function press(state: KeyboardState, text: string, key: Key, at: number):
     case 'delete':
       return { state, text: deletedWith(state.language, text) ?? withoutLast(text) }
     case 'shift': {
+      // Chinese's letters compose pinyin, which is lowercase whatever shift says: shift does nothing there
+      // (it used to flip the keycaps to capitals and look as if English were back).
+      if (state.language === 'zh') return { state, text }
       const doubleTap =
         state.shift === 'once' && state.shiftTappedAt !== null && at - state.shiftTappedAt <= DOUBLE_TAP_MS
       const shift: Shift = doubleTap ? 'locked' : state.shift === 'off' ? 'once' : 'off'
@@ -54,7 +66,12 @@ export function press(state: KeyboardState, text: string, key: Key, at: number):
       return { state: { ...state, layer: key.to, shift: 'off' }, text }
     case 'globe':
       return {
-        state: { ...state, language: otherLanguage(state.language, state.own), layer: 'letters', shift: 'off' },
+        state: {
+          ...state,
+          language: nextKeyboard(state.keyboards, state.language),
+          layer: 'letters',
+          shift: 'off',
+        },
         text,
       }
     case 'return':

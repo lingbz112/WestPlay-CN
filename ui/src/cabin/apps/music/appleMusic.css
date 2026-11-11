@@ -62,7 +62,7 @@
    centred, or (searching) the close circle and the field. Those two are placed in pixels by MusicApp.tsx
    (barLayout.ts), so going between the two is a plain move and resize of each. */
 .shell .am-bar {
-  --text-scale: 1;
+  /* The bar follows the player's text size too (it used to keep its own, and its tabs stayed small). */
   /* In from the panel's top right corner, so its round ends (Sign In, the open search field, the account) stay
      inside it, clear of the screen's black corner (shell.css --corner-inset). */
   --am-bar-inset: max(0px, calc((var(--panel-radius) - var(--am-bar) / 2) * var(--corner-inset)));

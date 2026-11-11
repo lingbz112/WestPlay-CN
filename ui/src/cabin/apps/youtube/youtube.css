@@ -41,7 +41,7 @@
 /* The search pill, YouTube's: a rim, the magnifier, the hint. The top bar keeps its type whatever the text
    size, as iOS's bars do. */
 .yt-top {
-  --text-scale: 1;
+  /* The top bar follows the player's text size too (it used to keep its own, and its type stayed small). */
   display: flex;
   align-items: center;
   gap: 14px;

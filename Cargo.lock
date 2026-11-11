@@ -4573,7 +4573,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "westplay-app"
-version = "2.2.1-1"
+version = "2.2.1-7"
 dependencies = [
  "serde",
  "serde_json",
@@ -4587,7 +4587,7 @@ dependencies = [
 
 [[package]]
 name = "westplay-host"
-version = "2.2.1-1"
+version = "2.2.1-7"
 dependencies = [
  "base64 0.22.1",
  "fastrand",
@@ -4612,7 +4612,7 @@ dependencies = [
 
 [[package]]
 name = "westplay-mapdata"
-version = "2.2.1-1"
+version = "2.2.1-7"
 dependencies = [
  "aes",
  "cbc",
@@ -4624,7 +4624,7 @@ dependencies = [
 
 [[package]]
 name = "westplay-plugin"
-version = "2.2.1-1"
+version = "2.2.1-7"
 dependencies = [
  "minhook",
  "westplay-shared",
@@ -4633,7 +4633,7 @@ dependencies = [
 
 [[package]]
 name = "westplay-setup"
-version = "2.2.1-1"
+version = "2.2.1-7"
 dependencies = [
  "flate2",
  "png 0.18.1",
@@ -4647,7 +4647,7 @@ dependencies = [
 
 [[package]]
 name = "westplay-shared"
-version = "2.2.1-1"
+version = "2.2.1-7"
 dependencies = [
  "serde",
  "windows",

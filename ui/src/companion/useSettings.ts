@@ -30,10 +30,12 @@ export interface Settings {
   graphics: {
     gpu: string | null
   }
-  /** The cab's map: whether its buildings rise from it, and its bridges and ramps. */
+  /** The cab's map: whether its buildings rise from it, and its bridges and ramps; and whether the maps are
+   * prepared faster (every processor thread, up to 80% of the memory). */
   map: {
     buildings: boolean
     roads: boolean
+    fast: boolean
   }
   /** The language WestPlay speaks in the cab and here: one of the game's (`de_de`), or `null`: the game's. */
   language: string | null
@@ -62,11 +64,13 @@ export const DEFAULT_KEY = KEY_PRESETS.leftAlt
 /** Mirrors `westplay_host::settings::InteractionMode`. */
 export type InteractionMode = 'hold' | 'toggle'
 
-/** Mirrors `westplay_host::settings::Keybinds`: the playing music's volume up and down, and play/pause. */
-export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause'
+/** Mirrors `westplay_host::settings::Keybinds`: the playing music's volume up and down, play/pause, and the
+ * track before and after. */
+export type KeybindId = 'volumeUp' | 'volumeDown' | 'playPause' | 'previousTrack' | 'nextTrack'
 
-/** In a row as their default keys are (1, 2, 3), as on a stereo: volume down, play/pause, volume up. */
-export const KEYBIND_IDS: KeybindId[] = ['volumeDown', 'playPause', 'volumeUp']
+/** In a row as their default keys are (1, 2, 3), as on a stereo: volume down, play/pause, volume up; the
+ * track keys as a keyboard's media row has them, before and after. */
+export const KEYBIND_IDS: KeybindId[] = ['previousTrack', 'volumeDown', 'playPause', 'volumeUp', 'nextTrack']
 
 /** Mirrors `westplay_host::settings::Binding`: a key, pressed alone or while using the screen (holding its
  * key, or toggled on). */

@@ -1174,7 +1174,7 @@
       cab?.reverb(data.reverb)
       cab?.character(data.character)
       cab?.reflection(data.reflection)
-      cab?.bass(data.bass)
+      cab?.bass(data.bassManagement)
     },
     spectrum: (data) => cab?.spectrum(data.on),
   }

@@ -711,7 +711,7 @@
       cab.reverb?.(command.reverb)
       cab.character?.(command.character)
       cab.reflection?.(command.reflection)
-      cab.bass?.(command.bass)
+      cab.bass?.(command.bassManagement)
       return
     }
     if (command.action === 'spectrum') {

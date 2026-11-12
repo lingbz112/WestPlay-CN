@@ -398,7 +398,13 @@ fn start_host(
 ) -> Result<Host, Box<dyn std::error::Error>> {
     let content = cabin_content(app);
     let data_dir = app.path().app_local_data_dir()?;
-    let stop = Arc::new(AtomicBool::new(false));
+    let map_builder = setup::map_builder_file(app);
+    westplay_host::log!(
+        "maps: {}",
+        map_builder
+            .as_ref()
+            .map_or("no map builder: built in WestPlay itself".into(), |file| format!("built by {}", file.display()))
+    );    let stop = Arc::new(AtomicBool::new(false));
 
     let events = app.clone();
     let thread_stop = stop.clone();
@@ -410,7 +416,7 @@ fn start_host(
         loop {
             let (content, data_dir) = (content.clone(), data_dir.clone());
             let (open_request, settings, stop) = (open_request.clone(), settings.clone(), thread_stop.clone());
-            let (accounts, game) = (accounts.clone(), game.clone());
+            let (accounts, game, map_builder) = (accounts.clone(), game.clone(), map_builder.clone());
             let status_events = events.clone();
             let (settings_events, settings_dir) = (events.clone(), looks.config_dir.clone());
             let customize_changed = looks.customize_changed.clone();
@@ -424,6 +430,7 @@ fn start_host(
                     accounts,
                     settings,
                     game,
+                    map_builder,
                     on_status: Box::new(move |status| {
                         let _ = status_events.emit("host-status", status);
                     }),

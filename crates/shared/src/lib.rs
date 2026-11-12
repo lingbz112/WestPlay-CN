@@ -9,7 +9,9 @@
 //!   fields are atomics or plain data guarded by a [`SeqLock`], so either side may start first.
 
 pub mod cityhash;
+pub mod crash;
 pub mod navigator;
+pub mod probe;
 
 use std::cell::UnsafeCell;
 use std::sync::LazyLock;
@@ -414,18 +416,22 @@ pub enum Keybind {
     VolumeUp = 0,
     VolumeDown = 1,
     PlayPause = 2,
+    PreviousTrack = 3,
+    NextTrack = 4,
 }
 
 impl Keybind {
-    pub const ALL: [Keybind; KEYBIND_COUNT] = [Keybind::VolumeUp, Keybind::VolumeDown, Keybind::PlayPause];
+    pub const ALL: [Keybind; KEYBIND_COUNT] =
+        [Keybind::VolumeUp, Keybind::VolumeDown, Keybind::PlayPause, Keybind::PreviousTrack, Keybind::NextTrack];
 
-    /// Whether it can be held ([`KEYBIND_HOLD_MS`]): the volume keys, whose press then counts as they're let go.
+    /// Whether it can be held ([`KEYBIND_HOLD_MS`]): the volume keys, whose press then counts as they're let go
+    /// (held, they change the song).
     pub fn holds(self) -> bool {
-        self != Keybind::PlayPause
+        matches!(self, Keybind::VolumeUp | Keybind::VolumeDown)
     }
 }
 
-pub const KEYBIND_COUNT: usize = 3;
+pub const KEYBIND_COUNT: usize = 5;
 
 /// A keybind as the bridge carries it: its key's virtual-key code, and whether it's pressed while holding the
 /// interaction key (using the screen) rather than alone.

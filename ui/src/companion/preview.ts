@@ -73,14 +73,16 @@ const UPDATE: Offer | null = query.has('update')
 let settings: Settings = {
   interaction: { key: 0xa4, mode: 'hold', sensitivity: 1.4 },
   keybinds: {
+    previousTrack: { key: 0xb1, withInteractionKey: false },
     volumeDown: { key: 0x31, withInteractionKey: true },
     playPause: { key: 0x32, withInteractionKey: true },
     volumeUp: { key: 0x33, withInteractionKey: true },
+    nextTrack: { key: 0xb0, withInteractionKey: false },
   },
   screen: { truckStrip: 'auto' },
   look: { wallpaper: null, iconSet: null, iconStyle: 'auto' },
   graphics: { gpu: null },
-  map: { buildings: true, roads: true },
+  map: { buildings: true, roads: true, fast: false },
   language: null,
 }
 
@@ -168,13 +170,21 @@ function status(): HostStatus {
       {
         game: 'ets2',
         dir: 'profiles/57657374',
+        folder: 'europe-cbf29ce484222325',
         status: map,
         leftOut: map.state === 'ready' && query.has('leftOut') ? ['Crni Kal 1.61'] : undefined,
       },
       {
         game: 'ets2',
         dir: 'profiles/54657374',
-        status: map.state === 'ready' ? { state: 'building', done: 0.4, stage: 'drawing' } : { state: 'queued' },
+        folder: 'europe-6350e2ab6a0e4959',
+        // `?others=ready`: made too (Prepare Maps Again then offers both to pick from).
+        status:
+          map.state === 'ready'
+            ? query.get('others') === 'ready'
+              ? map
+              : { state: 'building', done: 0.4, stage: 'drawing' }
+            : { state: 'queued' },
       },
     ],
     error: null,
@@ -337,6 +347,7 @@ export function answer(command: string, args?: Record<string, unknown>): Promise
       westplayOpen = Boolean(args?.open)
       return later(undefined, 200)
     case 'prepare_maps_again':
+      console.info('prepare_maps_again', args)
       // The played profile's map made anew (the status's ticking carries it on).
       map = { state: 'building', done: 0, stage: 'reading' }
       return later(undefined, 300)

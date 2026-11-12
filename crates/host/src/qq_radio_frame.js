@@ -143,12 +143,12 @@
         cab.reverb = message.reverb;
         cab.character = message.character;
         cab.reflection = message.reflection;
-        cab.bass = message.bass;
+        cab.bass = message.bassManagement;
         sound?.equalizer(message);
         sound?.reverb(message.reverb);
         sound?.character(message.character);
         sound?.reflection(message.reflection);
-        sound?.bass(message.bass);
+        sound?.bass(message.bassManagement);
         break;
       case "spectrum":
         cab.spectrum = Boolean(message.on);

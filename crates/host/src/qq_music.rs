@@ -48,6 +48,7 @@ enum Cab {
         reverb: Reverb,
         character: CabinCharacter,
         reflection: CabinReflection,
+        #[serde(rename = "bassManagement")]
         bass: BassManagement,
     },
     Spectrum {

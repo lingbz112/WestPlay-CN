@@ -52,6 +52,16 @@ import {
 import { receiveAnswer, receiveState, useYouTube } from '../apps/youtube/youtube'
 import { receiveFolder, receivePlayback as receivePlayerPlayback } from '../apps/player/player'
 import {
+  receiveClosed as receiveSafariClosed,
+  receiveDialog as receiveSafariDialog,
+  receiveLetGo as receiveSafariLetGo,
+  receiveNoDownload as receiveSafariNoDownload,
+  receiveOpened as receiveSafariOpened,
+  receivePicture as receiveSafariPicture,
+  receivePlaying as receiveSafariPlaying,
+  receiveTab as receiveSafariTab,
+} from '../apps/safari/safari'
+import {
   receiveAnswer as receiveYouTubeMusicAnswer,
   receivePlayback as receiveYouTubeMusicPlayback,
   receiveState as receiveYouTubeMusicState,
@@ -125,6 +135,9 @@ interface CabinState {
   preset: string | null
   /** The presets offered, tuned in WestPlay's developer window (its own file each): none until one is made. */
   presets: Preset[]
+  /** The screen's brightness (Settings › Appearance): the slider's place, 0 to 1, full at 1. The host scales the
+   * light of everything on the screen by it. */
+  brightness: number
   power: PowerState
   /**
    * The screen is handed back to the truck (its stock screen shows, with WestPlay's button to come back),
@@ -160,6 +173,8 @@ interface CabinState {
   setSoundEnabled(enabled: boolean): void
   /** The preset chosen in Settings › Sound › Presets, kept with WestPlay's settings like the rest. */
   setPreset(id: string | null): void
+  /** The screen's brightness, 0 to 1, kept with WestPlay's settings. */
+  setBrightness(level: number): void
   setOemMode(mode: OemMode): void
   /** The player's choice, in Settings: applied, and kept with WestPlay's settings. */
   chooseOemMode(mode: OemMode): void
@@ -177,7 +192,15 @@ export interface Preset {
 /** What survives a restart of the app: where you were and your choices, never the power state. */
 type Persisted = Pick<
   CabinState,
-  'navigation' | 'appearanceMode' | 'wallpaperId' | 'dashboardWidgets' | 'albumArt' | 'mapGrows' | 'hours24' | 'textSize'
+  | 'navigation'
+  | 'appearanceMode'
+  | 'wallpaperId'
+  | 'dashboardWidgets'
+  | 'albumArt'
+  | 'mapGrows'
+  | 'hours24'
+  | 'textSize'
+  | 'brightness'
 >
 
 const ALL_WIDGETS: Record<DashboardWidget, boolean> = { nowPlaying: true, destination: true, weather: true }
@@ -205,6 +228,7 @@ export const useCabin = create<CabinState>()(
       soundEnabled: true,
       preset: null,
       presets: [],
+      brightness: 1,
       power: INITIAL_POWER,
       navigate: (action) => set((state) => ({ navigation: navigate(state.navigation, action) })),
       setAppearanceMode: (appearanceMode) => set({ appearanceMode }),
@@ -273,6 +297,7 @@ export const useCabin = create<CabinState>()(
         set({ preset: id })
         if (isInHost()) postToHost({ type: 'preset', id })
       },
+      setBrightness: (level) => set({ brightness: Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 1 }),
       setOemMode: (oemMode) => set({ oemMode }),
       chooseOemMode: (oemMode) => {
         set({ oemMode })
@@ -284,7 +309,8 @@ export const useCabin = create<CabinState>()(
           return { power: next, truckScreen: next.phase === 'off' ? false : state.truckScreen }
         }),
       truckScreen: false,
-      setTruckScreen: (truckScreen) => set({ truckScreen }),
+      setTruckScreen: (truckScreen) =>
+        set({ truckScreen: truckScreen && useLive.getState().screenLayout !== 'tablet' }),
     }),
     {
       // The onboarding's demo keeps its own: it never changes the player's.
@@ -311,6 +337,7 @@ export const useCabin = create<CabinState>()(
         mapGrows: state.mapGrows,
         hours24: state.hours24,
         textSize: state.textSize,
+        brightness: state.brightness,
       }),
       // Stored data comes from an earlier version of WestPlay (or was edited): keep only what is valid.
       merge: (stored, current) => ({ ...current, ...sanitize(stored as Partial<Persisted> | undefined) }),
@@ -345,6 +372,9 @@ function sanitize(stored: Partial<Persisted> | undefined): Partial<Persisted> {
   if (typeof stored.mapGrows === 'boolean') result.mapGrows = stored.mapGrows
   if (typeof stored.hours24 === 'boolean') result.hours24 = stored.hours24
   if (stored.textSize !== undefined) result.textSize = toTextSize(stored.textSize)
+  if (typeof stored.brightness === 'number' && Number.isFinite(stored.brightness)) {
+    result.brightness = Math.max(0, Math.min(1, stored.brightness))
+  }
   return result
 }
 
@@ -448,7 +478,7 @@ export const useLive = create<LiveState>()(() => ({
   routeNext: 0,
   routeStops: [],
   offeredLines: null,
-weather: null,
+  weather: null,
   gameShown: true,
   menuGone: false,
   keybind: null,
@@ -484,8 +514,12 @@ export function connectHost(now: () => number = () => performance.now()): () => 
   const stopMessages = subscribeHostMessages(receiveHostMessage(now))
   const report = () => postToHost({ type: 'westplay', open: !useCabin.getState().truckScreen })
   report()
+  // The screen's brightness, for the host to scale the frame's light by: as the page connects, and as it changes.
+  const reportBrightness = () => postToHost({ type: 'brightness', level: useCabin.getState().brightness })
+  reportBrightness()
   const stopReports = useCabin.subscribe((state, previous) => {
     if (state.truckScreen !== previous.truckScreen) report()
+    if (state.brightness !== previous.brightness) reportBrightness()
   })
   // The field selected, for the player's own keyboard to type into (the host passes it to the game plugin).
   const reportSelection = () => postToHost({ type: 'typing', selection: useKeyboard.getState().selection })
@@ -743,6 +777,30 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
         break
       case 'playerPlayback':
         receivePlayerPlayback(message.playback)
+        break
+      case 'safariTab':
+        receiveSafariTab(message.tab, message.state)
+        break
+      case 'safariOpened':
+        receiveSafariOpened(message.tab, message.opener)
+        break
+      case 'safariClosed':
+        receiveSafariClosed(message.tab)
+        break
+      case 'safariLetGo':
+        receiveSafariLetGo(message.tab)
+        break
+      case 'safariDialog':
+        receiveSafariDialog(message.tab, message.dialog)
+        break
+      case 'safariPicture':
+        receiveSafariPicture(message.tab, message.version)
+        break
+      case 'safariNoDownload':
+        receiveSafariNoDownload()
+        break
+      case 'safariPlaying':
+        receiveSafariPlaying(message.playing)
         break
       case 'youtubeMusic':
         receiveYouTubeMusicState(message)

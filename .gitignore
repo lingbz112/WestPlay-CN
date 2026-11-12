@@ -30,3 +30,7 @@ dist/
 # AGENT
 AGENT.md
 CLAUDE.md
+
+#tools
+/tools/ats-speaker-extractor
+/tools/speaker-marker

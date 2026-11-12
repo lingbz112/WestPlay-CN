@@ -28,14 +28,14 @@ export const RECENTS_LIMIT = APP_IDS.length
 
 /**
  * The sidebar's slots, as CarPlay's (owner 2026-11-03): not the last opened apps but one app of each kind, the
- * last used of it: a maps app, a music app, Phone or Messages, a calendar. Each slot's apps, its first shown
+ * last used of it: a maps app, a music app, Phone or Messages, and the fourth Calendar, Weather, Settings or Safari. Each slot's apps, its first shown
  * until another is used. A slot whose apps this release hasn't is left out.
  */
 const SIDEBAR_SLOTS: readonly (readonly AppId[])[] = [
   ['maps'],
   ['music', 'qqMusic', 'neteaseMusic', 'spotify', 'youtubeMusic', 'player', 'podcasts'],
   ['phone', 'messages'],
-  ['calendar'],
+  ['calendar', 'weather', 'settings', 'safari'],
 ]
 
 /** At most this many: the fourth (a calendar) only where the screen has room (`ScreenProfile.recents`). */

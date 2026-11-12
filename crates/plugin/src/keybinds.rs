@@ -1,4 +1,5 @@
-//! The player's keybinds (the app's settings, through the bridge): volume up, volume down, play/pause.
+//! The player's keybinds (the app's settings, through the bridge): volume up, volume down, play/pause, and
+//! the track before and after.
 //!
 //! Each press of a bound key, in the game with WestPlay on its screen, is counted for the app, which acts on
 //! it. A binding with the interaction key counts only while the player uses the screen (the key held, or

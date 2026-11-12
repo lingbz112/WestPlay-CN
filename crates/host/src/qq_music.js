@@ -2011,7 +2011,7 @@
       sound?.reverb(data.reverb);
       sound?.character(data.character);
       sound?.reflection(data.reflection);
-      sound?.bass(data.bass);
+      sound?.bass(data.bassManagement);
     },
     spectrum: (data) => sound?.spectrum(data.on),
   };

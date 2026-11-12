@@ -425,6 +425,7 @@ enum Cab {
         reverb: Reverb,
         character: CabinCharacter,
         reflection: CabinReflection,
+        #[serde(rename = "bassManagement")]
         bass: BassManagement,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays.

@@ -66,17 +66,22 @@ impl<'de> Deserialize<'de> for LanguageCode {
     }
 }
 
-/// The cab's map (the companion's Map page): whether its buildings rise from it, and its bridges and ramps.
+/// The cab's map (the companion's Map page): whether its buildings rise from it, and its bridges and ramps; and
+/// how the maps are prepared.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MapSettings {
     pub buildings: bool,
     pub roads: bool,
+    /// Prepare Maps Faster: a build on every processor thread, drawing more at once while it has taken less than
+    /// four fifths of the PC's memory (`westplay_mapdata::threads::FULL_SHARE`), for PCs with plenty of both
+    /// (owner 2026-11-06). Off: half the processor, the memory kept low.
+    pub fast: bool,
 }
 
 impl Default for MapSettings {
     fn default() -> Self {
-        Self { buildings: true, roads: true }
+        Self { buildings: true, roads: true, fast: false }
     }
 }
 
@@ -300,13 +305,15 @@ impl<'de> Deserialize<'de> for KeyCode {
 }
 
 /// The keys for what WestPlay does from the game (owner 2026-10-21: every keybind customizable in the
-/// companion): the playing app's volume up and down a step, and play or pause it.
+/// companion): the playing app's volume up and down a step, play or pause it, and the track before or after it.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keybinds {
     pub volume_up: Binding,
     pub volume_down: Binding,
     pub play_pause: Binding,
+    pub previous_track: Binding,
+    pub next_track: Binding,
 }
 
 impl<'de> Deserialize<'de> for Keybinds {
@@ -322,6 +329,8 @@ impl<'de> Deserialize<'de> for Keybinds {
             volume_up: binding("volumeUp", defaults.volume_up),
             volume_down: binding("volumeDown", defaults.volume_down),
             play_pause: binding("playPause", defaults.play_pause),
+            previous_track: binding("previousTrack", defaults.previous_track),
+            next_track: binding("nextTrack", defaults.next_track),
         })
     }
 }
@@ -331,7 +340,15 @@ impl Default for Keybinds {
     /// row as on a stereo (owner 2026-10-21): volume down, play/pause between, volume up.
     fn default() -> Self {
         let with_key = |code| Binding { key: KeyCode(code), with_interaction_key: true };
-        Self { volume_down: with_key(0x31), play_pause: with_key(0x32), volume_up: with_key(0x33) }
+        // The previous and next track keys stand alone, as on a keyboard's media row: they work anywhere in
+        // the game, not only while using the screen.
+        Self {
+            volume_down: with_key(0x31),
+            play_pause: with_key(0x32),
+            volume_up: with_key(0x33),
+            previous_track: Binding { key: KeyCode(0xb1), with_interaction_key: false },
+            next_track: Binding { key: KeyCode(0xb0), with_interaction_key: false },
+        }
     }
 }
 
@@ -343,6 +360,8 @@ impl Keybinds {
                 Keybind::VolumeUp => self.volume_up,
                 Keybind::VolumeDown => self.volume_down,
                 Keybind::PlayPause => self.play_pause,
+                Keybind::PreviousTrack => self.previous_track,
+                Keybind::NextTrack => self.next_track,
             };
             keybind_value(binding.key.virtual_key(), binding.with_interaction_key)
         })
@@ -573,7 +592,7 @@ mod tests {
                 reflection: crate::speakers::CabinReflection { amount: 80 },
                 bass: crate::speakers::BassManagement { cutoff: 70 },
             },
-            map: MapSettings { buildings: false, roads: false },
+            map: MapSettings { buildings: false, roads: false, fast: true },
             language: LanguageCode::new("pt_br"),
         };
         let json = to_json(&settings);

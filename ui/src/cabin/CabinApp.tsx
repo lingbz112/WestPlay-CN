@@ -7,6 +7,7 @@ import { pauseSpotifyWithGame, spotifyPlayer } from './apps/spotify/pauseWithGam
 import { pauseYouTubeWithGame, youtubePlayer } from './apps/youtube/pauseWithGame'
 import { pauseYouTubeMusicWithGame, youtubeMusicPlayer } from './apps/youtubeMusic/pauseWithGame'
 import { pausePlayerWithGame, playerAppPlayer } from './apps/player/pauseWithGame'
+import { pauseSafariWithGame, safariPlayer } from './apps/safari/pauseWithGame'
 import { pauseQqMusicWithGame, qqMusicPlayer } from './apps/qqMusic/pauseWithGame'
 import { pauseNeteaseMusicWithGame, neteaseMusicPlayer } from './apps/neteaseMusic/pauseWithGame'
 import { AppScreen } from './apps/AppScreen'
@@ -41,6 +42,7 @@ const PLAYERS = [
   neteaseMusicPlayer,
   youtubeMusicPlayer,
   playerAppPlayer,
+  safariPlayer,
 ]
 
 /** The in-cabin screen: the shell around the screen for the current route, after the boot sequence. */
@@ -48,13 +50,14 @@ export function CabinApp() {
   const route = useCabin((state) => state.navigation.route)
   const phase = useCabin((state) => state.power.phase)
   useEffect(() => connectHost(), [])
-  // YouTube, Spotify, Apple Music, QQ Music, NetEase Cloud Music, YouTube Music and Player pause with the game
+  // YouTube, Spotify, Apple Music, QQ Music, NetEase Cloud Music, YouTube Music, Player and Safari pause with the game
   // (its menu, tabbing out) and play on after.
   useEffect(() => pauseYouTubeWithGame(), [])
   useEffect(() => pauseSpotifyWithGame(), [])
   useEffect(() => pauseAppleMusicWithGame(), [])
   useEffect(() => pauseYouTubeMusicWithGame(), [])
   useEffect(() => pausePlayerWithGame(), [])
+  useEffect(() => pauseSafariWithGame(), [])
   useEffect(() => pauseQqMusicWithGame(), [])
   useEffect(() => pauseNeteaseMusicWithGame(), [])
   // One of them at a time: the newest to start plays on, the others pause (apps/oneAtATime.ts).

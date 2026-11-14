@@ -37,8 +37,10 @@ describe('keyRows', () => {
     expect(top(keyboardLanguage('ru_ru'))).toBe('йцукенгшщзхъ')
     expect(top(keyboardLanguage('sr_sp'))).toBe('qwertzuiopšđ')
     expect(top(keyboardLanguage('fi_fi'))).toBe('qwertyuiopå')
-    // Canada's French, Italian, Chinese: QWERTY.
-    for (const language of ['fr_ca', 'it_it', 'zh_cn', 'en_us']) expect(keyboardLanguage(language)).toBe('en')
+    // Canada's French and Italian: QWERTY.
+    for (const language of ['fr_ca', 'it_it', 'en_us']) expect(keyboardLanguage(language)).toBe('en')
+    // Chinese: its pinyin on QWERTY, with the candidates over it (pinyin.ts).
+    for (const language of ['zh_cn', 'zh_tw']) expect(keyboardLanguage(language)).toBe('zh')
     // No row wider than the top one: the keys take its width.
     for (const language of ['tr', 'de', 'fr', 'hu', 'et', 'hr', 'ru', 'uk', 'bg', 'mk', 'sr', 'ka', 'ko'] as const) {
       const rows = keyRows(language, 'letters')
@@ -47,9 +49,16 @@ describe('keyRows', () => {
   })
 
   it('switches between layers from the bottom row and the third', () => {
-    // The globe only where there's another keyboard: English alone has none.
+    // The globe where the keyboard says there's another keyboard to go to (the cabin's always has one now:
+    // English's goes to Chinese).
     expect(keyRows('en', 'letters')[3].map((key) => key.kind)).toEqual(['layer', 'space', 'hide', 'return'])
-    expect(keyRows('en', 'letters', true)[3].map((key) => key.kind)).toEqual(['layer', 'globe', 'space', 'hide', 'return'])
+    expect(keyRows('en', 'letters', true)[3].map((key) => key.kind)).toEqual([
+      'layer',
+      'globe',
+      'space',
+      'hide',
+      'return',
+    ])
     expect(keyRows('de', 'letters')[3][1]).toEqual({ kind: 'globe' })
     expect(keyRows('en', 'letters')[3][0]).toEqual({ kind: 'layer', to: 'numbers' })
     expect(keyRows('en', 'numbers')[3][0]).toEqual({ kind: 'layer', to: 'letters' })
@@ -90,11 +99,28 @@ describe('press', () => {
     expect(capital('ა', 'ka')).toBe('ა')
     expect(capital('ㄱ', 'ko')).toBe('ㄲ')
     expect(capital('ö', 'de')).toBe('Ö')
-    // The globe goes between the language's own keyboard and English, both ways.
+  })
+
+  it('goes round the globe key: the language, English, Chinese and back', () => {
+    // A German game's: German, then English, then Chinese, then German again.
     const german = initialKeyboard('de')
+    expect(german.keyboards).toEqual(['de', 'en', 'zh'])
     const there = typed([{ kind: 'globe' }], german).state
-    expect(there).toMatchObject({ language: 'en', own: 'de' })
-    expect(typed([{ kind: 'globe' }], there).state.language).toBe('de')
+    expect(there).toMatchObject({ language: 'en', keyboards: ['de', 'en', 'zh'] })
+    expect(typed([{ kind: 'globe' }], there).state.language).toBe('zh')
+    expect(typed([{ kind: 'globe' }, { kind: 'globe' }], there).state.language).toBe('de')
+    // A Chinese PC's and an English one's: the two of them, both ways.
+    expect(initialKeyboard('zh').keyboards).toEqual(['zh', 'en'])
+    expect(typed([{ kind: 'globe' }], initialKeyboard('zh')).state.language).toBe('en')
+    expect(initialKeyboard('en').keyboards).toEqual(['en', 'zh'])
+    expect(typed([{ kind: 'globe' }, { kind: 'globe' }], initialKeyboard('en')).state.language).toBe('en')
+  })
+
+  it('leaves shift alone in Chinese, whose letters compose pinyin in lower case', () => {
+    const chinese = initialKeyboard('zh')
+    const shift = { kind: 'shift' } as const
+    expect(press(chinese, '', shift, 0)).toMatchObject({ text: '', state: { shift: 'off' } })
+    expect(typed([shift, char('n'), char('i')], chinese)).toMatchObject({ text: 'ni', state: { shift: 'off' } })
   })
 
   it('joins Korean letters into syllables, and takes them apart a letter at a time', () => {

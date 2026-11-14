@@ -224,7 +224,7 @@
 /* --- On top: Home, the search pill, Your Library, the account ------------------------------------------- */
 
 .spotify-app .sp-top {
-  --text-scale: 1;
+  /* The top bar follows the player's text size too (it used to keep its own, and its type stayed small). */
   position: relative;
   z-index: 2;
   display: flex;

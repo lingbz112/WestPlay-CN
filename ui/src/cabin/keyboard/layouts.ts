@@ -8,13 +8,14 @@ import { kanaTyped } from './kana'
  * Letters are written lowercase; shift makes them capitals by their language's rules (Turkish i and ı are İ and
  * I), or, where a script has no capitals, its other letters (Georgian's, Korean's doubled consonants). Korean's
  * letters join into syllables as they're typed, and Japanese is typed in romaji, which turns to kana as it
- * goes (as iOS's Romaji keyboard does, without its kanji); Chinese's pinyin needs a dictionary to become
- * characters, so Chinese types Latin letters, as Vietnamese does without Telex's tone marks.
+ * goes (as iOS's Romaji keyboard does, without its kanji); Chinese types pinyin on the Latin keys, which a
+ * dictionary turns into characters and words (`pinyin.ts`, the candidates over the keys).
  */
 
 /** A keyboard, by the letters it has. */
 export type Language =
   | 'en'
+  | 'zh'
   | 'tr'
   | 'de'
   | 'fr'
@@ -57,6 +58,8 @@ const QWERTZ = ['qwertzuiop', 'asdfghjkl', 'yxcvbnm'] as const
 
 const KEYBOARDS: Record<Language, Letters> = {
   en: { rows: QWERTY, locale: 'en-GB' },
+  // Pinyin on the Latin keys: the letters are the composition (Keyboard/pinyin.ts), the candidates above.
+  zh: { rows: QWERTY, locale: 'zh-CN' },
   tr: { rows: ['qwertyuıopğü', 'asdfghjklşi', 'zxcvbnmöç'], locale: 'tr-TR' },
   de: { rows: ['qwertzuiopü', 'asdfghjklöä', 'yxcvbnm'], locale: 'de-DE' },
   fr: { rows: ['azertyuiop', 'qsdfghjklm', 'wxcvbn'], locale: 'fr-FR' },
@@ -120,10 +123,14 @@ const BY_LANGUAGE: Record<string, Language> = {
   ka: 'ka',
   ja: 'ja',
   ko: 'ko',
+  zh: 'zh',
+  'zh_cn': 'zh',
+  'zh_tw': 'zh',
 }
 
 /** The keyboard for the cabin's language (a game code, `de_de`): its own, or QWERTY (English, Italian, Dutch,
- * Portuguese, Polish, Romanian, the Baltic languages, Canada's French, Vietnamese, Chinese). */
+ * Portuguese, Polish, Romanian, the Baltic languages, Canada's French, Vietnamese); Chinese too, its pinyin on
+ * QWERTY. */
 export function keyboardLanguage(language: CabinLanguage): Language {
   return BY_LANGUAGE[language] ?? BY_LANGUAGE[language.slice(0, 2)] ?? 'en'
 }
@@ -181,9 +188,22 @@ export function capital(char: string, language: Language): string {
   return char.toLocaleUpperCase(locale)
 }
 
-/** The other keyboard, for the globe key: English from the language's own, the language's own from English. */
-export function otherLanguage(language: Language, own: Language): Language {
-  return language === own ? 'en' : own
+/**
+ * The keyboards the globe key goes between, in the order it goes by: the one starting on (`start`: the game's
+ * own keyboard), then English and Chinese where they aren't that. An English game's is English then Chinese, a
+ * German one's German, English and Chinese, so the Chinese is somewhere to go to from everywhere.
+ */
+export function keyboardPair(start: Language): Language[] {
+  const keyboards = [start]
+  if (start !== 'en') keyboards.push('en')
+  if (start !== 'zh') keyboards.push('zh')
+  return keyboards
+}
+
+/** The keyboard the globe key goes to from `language`: the next of `keyboards`, round to the first again. */
+export function nextKeyboard(keyboards: readonly Language[], language: Language): Language {
+  const at = keyboards.indexOf(language)
+  return keyboards[(at + 1) % keyboards.length] ?? language
 }
 
 /** The text after typing `char` on `language`'s keyboard. */

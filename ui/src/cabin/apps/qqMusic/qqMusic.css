@@ -61,7 +61,7 @@
    centred, or (searching) the close circle and the field. Those two are placed in pixels by QqMusicApp.tsx
    (barLayout.ts), so going between the two is a plain move and resize of each. */
 .shell .am-bar {
-  --text-scale: 1;
+  /* The bar follows the player's text size too (it used to keep its own, and its tabs stayed small). */
   position: relative;
   z-index: 3;
   height: var(--am-bar);

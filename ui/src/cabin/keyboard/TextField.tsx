@@ -1,4 +1,5 @@
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLanguage, useText } from '../state/text'
 import { keyboardLanguage, type ReturnKind } from './layouts'
 import { type Typing, useKeyboard } from './store'
@@ -21,10 +22,39 @@ interface TextFieldProps {
   autoSelect?: boolean
 }
 
+/** Where the candidates of a pinyin composition go: in the screen's own pixels, under the field they belong to. */
+interface CandidatePlace {
+  /** The screen they're drawn in (`.shell`: its glass's colours and its own pixels are there). */
+  host: HTMLElement
+  left: number
+  top: number
+  maxWidth: number
+}
+
+/** Under `element` (the field, where the caret is), in the screen it's drawn in. A panel of the field's own would
+ * be clipped by the bars the field sits in; the screen the cab draws may be scaled, so the pixels are its own. */
+function placeUnder(element: HTMLElement | null): CandidatePlace | null {
+  const host = element?.closest<HTMLElement>('.shell')
+  if (!element || !host) return null
+  const outer = host.getBoundingClientRect()
+  const inner = element.getBoundingClientRect()
+  const scale = outer.width / host.offsetWidth || 1
+  const left = (inner.left - outer.left) / scale
+  return {
+    host,
+    left,
+    top: (inner.bottom - outer.top) / scale + 8,
+    maxWidth: outer.width / scale - left - 12,
+  }
+}
+
 /**
  * A field the keyboard types into. Not an `<input>`: the page never has the PC's keyboard (the game does),
  * so WestPlay draws its own field, caret and all, and the keyboard (store.ts) writes into it. Pressing it
  * selects it and brings the keyboard up; it lets go when it leaves the screen.
+ *
+ * While pinyin is being composed, its candidates show under the field (over the screen, not in the keyboard):
+ * picked by their number on the player's own keyboard, or by a tap.
  */
 export function TextField({
   id,
@@ -69,6 +99,18 @@ export function TextField({
     if (autoSelect) select()
   }, [])
 
+  // Chinese: what the pinyin typed so far may become, just under the field (where the caret is).
+  const composing = useKeyboard((state) => (state.field?.id === id ? state.composing : null))
+  const box = useRef<HTMLDivElement>(null)
+  const [place, setPlace] = useState<CandidatePlace | null>(null)
+  const placeCandidates = () => setPlace(placeUnder(box.current))
+  useLayoutEffect(placeCandidates, [composing, value])
+  useEffect(() => {
+    // The screen may be laid out again (another look, a truck's own screen): the field moves with it.
+    window.addEventListener('resize', placeCandidates)
+    return () => window.removeEventListener('resize', placeCandidates)
+  })
+
   // A long text shows its end, where the typing is.
   const shown = useRef<HTMLSpanElement>(null)
   useLayoutEffect(() => {
@@ -77,6 +119,7 @@ export function TextField({
 
   return (
     <div
+      ref={box}
       className={typing ? 'text-field typing' : 'text-field'}
       role="textbox"
       aria-label={label}
@@ -107,6 +150,34 @@ export function TextField({
           </svg>
         </button>
       )}
+      {composing &&
+        place &&
+        composing.candidates.length > 0 &&
+        createPortal(
+          <div
+            className="text-field-candidates"
+            role="listbox"
+            aria-label="候选词"
+            style={{ left: place.left, top: place.top, maxWidth: place.maxWidth }}
+          >
+            {composing.candidates.map((candidate, index) => (
+              <button
+                key={`${index}:${candidate}`}
+                type="button"
+                tabIndex={-1}
+                className="text-field-candidate"
+                role="option"
+                aria-selected={false}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => useKeyboard.getState().press({ kind: 'char', char: String(index + 1) })}
+              >
+                <span className="text-field-candidate-number">{index + 1}</span>
+                <span className="text-field-candidate-word">{candidate}</span>
+              </button>
+            ))}
+          </div>,
+          place.host,
+        )}
     </div>
   )
 }

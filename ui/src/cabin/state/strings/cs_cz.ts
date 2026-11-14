@@ -540,6 +540,7 @@ export const strings: Strings = {
     messages: 'Zprávy',
     calendar: 'Kalendář',
     weather: 'Počasí',
+    radio: 'Radio',
     settings: 'Nastavení',
   },
   notBuiltYet: 'Tato aplikace ještě není hotová.',

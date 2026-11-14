@@ -523,6 +523,7 @@ export const strings: Strings = {
     messages: '訊息',
     calendar: '行事曆',
     weather: '天氣',
+    radio: '廣播',
     settings: '設定',
   },
   notBuiltYet: '此 App 尚未準備就緒。',

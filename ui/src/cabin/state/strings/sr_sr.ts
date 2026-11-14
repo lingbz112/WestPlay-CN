@@ -539,6 +539,7 @@ export const strings: Strings = {
     messages: 'Поруке',
     calendar: 'Календар',
     weather: 'Време',
+    radio: 'Radio',
     settings: 'Подешавања',
   },
   notBuiltYet: 'Ова апликација још није спремна.',

@@ -20,6 +20,7 @@ export type AppIconRole =
   | 'weather'
   | 'youtube'
   | 'youtubeMusic'
+  | 'radio'
   | 'player'
   | 'safari'
 
@@ -38,6 +39,7 @@ const FILES: Record<AppIconRole, string> = {
   weather: 'weather',
   youtube: 'youtube',
   youtubeMusic: 'youtube-music',
+  radio: 'radio',
   player: 'player',
   safari: 'safari',
 }

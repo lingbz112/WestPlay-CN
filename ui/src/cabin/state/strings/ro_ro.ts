@@ -553,6 +553,7 @@ export const strings: Strings = {
     messages: 'Mesaje',
     calendar: 'Calendar',
     weather: 'Vremea',
+    radio: 'Radio',
     settings: 'Configurări',
   },
   notBuiltYet: 'Această aplicație nu este încă gata.',

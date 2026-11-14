@@ -551,6 +551,7 @@ export const strings: Strings = {
     messages: 'Žinutės',
     calendar: 'Kalendorius',
     weather: 'Orai',
+    radio: 'Radio',
     settings: 'Nustatymai',
   },
   notBuiltYet: 'Ši programa dar neparengta.',

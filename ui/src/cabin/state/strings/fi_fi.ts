@@ -547,6 +547,7 @@ export const strings: Strings = {
     messages: 'Viestit',
     calendar: 'Kalenteri',
     weather: 'Sää',
+    radio: 'Radio',
     settings: 'Asetukset',
   },
   notBuiltYet: 'Tämä appi ei ole vielä valmis.',

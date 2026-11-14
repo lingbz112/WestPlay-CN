@@ -528,6 +528,7 @@ export const strings: Strings = {
     messages: 'Meldinger',
     calendar: 'Kalender',
     weather: 'Vær',
+    radio: 'Radio',
     settings: 'Innstillinger',
   },
   notBuiltYet: 'Denne appen er ikke klar ennå.',

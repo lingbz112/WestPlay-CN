@@ -10,6 +10,7 @@ import { pausePlayerWithGame, playerAppPlayer } from './apps/player/pauseWithGam
 import { pauseSafariWithGame, safariPlayer } from './apps/safari/pauseWithGame'
 import { pauseQqMusicWithGame, qqMusicPlayer } from './apps/qqMusic/pauseWithGame'
 import { pauseNeteaseMusicWithGame, neteaseMusicPlayer } from './apps/neteaseMusic/pauseWithGame'
+import { pauseRadioWithGame, radioPlayer } from './apps/radio/pauseWithGame'
 import { AppScreen } from './apps/AppScreen'
 import { BootScreen } from './boot/BootScreen'
 import { Dashboard } from './dashboard/Dashboard'
@@ -40,6 +41,7 @@ const PLAYERS = [
   appleMusicPlayer,
   qqMusicPlayer,
   neteaseMusicPlayer,
+  radioPlayer,
   youtubeMusicPlayer,
   playerAppPlayer,
   safariPlayer,
@@ -50,8 +52,8 @@ export function CabinApp() {
   const route = useCabin((state) => state.navigation.route)
   const phase = useCabin((state) => state.power.phase)
   useEffect(() => connectHost(), [])
-  // YouTube, Spotify, Apple Music, QQ Music, NetEase Cloud Music, YouTube Music, Player and Safari pause with the game
-  // (its menu, tabbing out) and play on after.
+  // YouTube, Spotify, Apple Music, QQ Music, NetEase Cloud Music, the radio, YouTube Music, Player and
+  // Safari pause with the game (its menu, tabbing out) and play on after.
   useEffect(() => pauseYouTubeWithGame(), [])
   useEffect(() => pauseSpotifyWithGame(), [])
   useEffect(() => pauseAppleMusicWithGame(), [])
@@ -60,6 +62,7 @@ export function CabinApp() {
   useEffect(() => pauseSafariWithGame(), [])
   useEffect(() => pauseQqMusicWithGame(), [])
   useEffect(() => pauseNeteaseMusicWithGame(), [])
+  useEffect(() => pauseRadioWithGame(), [])
   // One of them at a time: the newest to start plays on, the others pause (apps/oneAtATime.ts).
   useEffect(() => oneAtATime(PLAYERS), [])
   // The player's keybinds pressed in the game: the music's volume, or play/pause (apps/keybinds.ts).

@@ -535,6 +535,7 @@ export const strings: Strings = {
     messages: 'Üzenetek',
     calendar: 'Naptár',
     weather: 'Időjárás',
+    radio: 'Radio',
     settings: 'Beállítások',
   },
   notBuiltYet: 'Ez az app még nem készült el.',

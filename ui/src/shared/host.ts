@@ -272,6 +272,10 @@ export type HostMessage =
   | ({ type: 'neteaseMusicAnswer'; id: number; failed?: boolean } & Partial<AppleMusicAnswers>)
   /** What NetEase Cloud Music plays; `null`: nothing. */
   | { type: 'neteaseMusicPlayback'; playback: AppleMusicPlayback | null }
+  /** radio.cn's stations of a province (`region`: its code; `failed`: radio.cn didn't say). */
+  | { type: 'radioStations'; region: string; stations: RadioStationInfo[]; failed?: boolean }
+  /** What the radio plays; `null`: nothing. */
+  | { type: 'radioPlayback'; playback: RadioPlayback | null }
   /** YouTube Music's web player: whether it's signed in and playing (`null`: not running), whether its sign-in
    * window is open on the PC, and the account's picture (Google's). YouTube's sign-in: they share it. */
   | {
@@ -539,6 +543,8 @@ export type PageMessage =
   | { type: 'qqMusic'; command: AppleMusicCommand }
   /** A command for NetEase Cloud Music's web player (`westplay_host::netease_music::Command`). */
   | { type: 'neteaseMusic'; command: AppleMusicCommand }
+  /** A command for radio.cn's page (`westplay_host::radio::Command`). */
+  | { type: 'radio'; command: RadioCommand }
   /** A command for YouTube Music's web player (`westplay_host::youtube_music::Command`). */
   | { type: 'youtubeMusic'; command: YouTubeMusicCommand }
   /** A command for Player's own player (`westplay_host::music_folder::Command`). */
@@ -967,6 +973,37 @@ export interface AppleMusicPlayback {
   failed?: boolean
   next: AppleMusicTrack[]
 }
+
+/** A station as the Radio app shows it (`westplay_host::radio::Station`). */
+export interface RadioStationInfo {
+  id: string
+  /** Its province's code (`0`: the national stations). */
+  region: string
+  name: string
+  program: string
+  image: string | null
+}
+
+/** What the radio plays (`westplay_host::radio::Playback`): the station, whether it plays, whether its sound
+ * is yet to come, the volume (0 to 1), and whether it couldn't play. */
+export interface RadioPlayback {
+  station: RadioStationInfo | null
+  playing: boolean
+  loading: boolean
+  volume: number | null
+  failed?: boolean
+}
+
+/** What the Radio app asks radio.cn's page (`westplay_host::radio::Command`). */
+export type RadioCommand =
+  | { action: 'start' }
+  /** The stations of a province (`region`: its code). */
+  | { action: 'stations'; region: string }
+  /** A station, from its start; the same one again plays on. */
+  | { action: 'play'; id: string; region: string }
+  | { action: 'pause' }
+  /** The page's player's volume, 0 to 100. */
+  | { action: 'volume'; percent: number }
 
 /** What the YouTube Music app asks of YouTube Music's web player (`westplay_host::youtube_music::Command`), run
  * hidden by the host: its sign-in (Google's, YouTube's own: they share it), a question (answered with

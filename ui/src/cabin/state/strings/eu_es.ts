@@ -539,6 +539,7 @@ export const strings: Strings = {
     messages: 'Mezuak',
     calendar: 'Egutegia',
     weather: 'Eguraldia',
+    radio: 'Radio',
     settings: 'Ezarpenak',
   },
   notBuiltYet: 'Aplikazio hau ez dago prest oraindik.',

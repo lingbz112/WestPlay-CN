@@ -536,6 +536,7 @@ export const strings: Strings = {
     messages: 'Sõnumid',
     calendar: 'Kalender',
     weather: 'Ilm',
+    radio: 'Radio',
     settings: 'Seaded',
   },
   notBuiltYet: 'See rakendus pole veel valmis.',

@@ -523,6 +523,7 @@ export const strings: Strings = {
     messages: 'Tin nhắn',
     calendar: 'Lịch',
     weather: 'Thời tiết',
+    radio: 'Radio',
     settings: 'Cài đặt',
   },
   notBuiltYet: 'Ứng dụng này chưa sẵn sàng.',

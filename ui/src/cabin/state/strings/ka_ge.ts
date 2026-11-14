@@ -527,6 +527,7 @@ export const strings: Strings = {
     messages: 'შეტყობინებები',
     calendar: 'კალენდარი',
     weather: 'ამინდი',
+    radio: 'Radio',
     settings: 'პარამეტრები',
   },
   notBuiltYet: 'ეს აპი ჯერ მზად არ არის.',

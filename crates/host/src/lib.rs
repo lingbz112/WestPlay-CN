@@ -29,6 +29,7 @@ mod player;
 mod pointer;
 mod qq_music;
 mod netease_music;
+mod radio;
 mod netease_proxy;
 pub mod route;
 mod route_change;
@@ -459,6 +460,9 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
     let mut netease_music_state: Option<apple_music::State> = None;
     let (mut netease_music_window_open, mut netease_music_confirming) = (false, false);
     let mut netease_music_playback: Option<String> = None;
+    // radio.cn's page, the Radio app's engine.
+    let mut radio: Option<radio::Radio> = None;
+    let mut radio_playback: Option<String> = None;
     // YouTube Music's web player, the same way (on the cabin page's profile, sharing YouTube's sign-in).
     let mut youtube_music: Option<youtube_music::YouTubeMusic> = None;
     let mut youtube_music_state: Option<youtube_music::State> = None;
@@ -922,6 +926,11 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                             let _ = webview.post_json(playback);
                         }
                     }
+                    if radio.is_some()
+                        && let Some(playback) = &radio_playback
+                    {
+                        let _ = webview.post_json(playback);
+                    }
                     if youtube_music.is_some() {
                         let signing_in = youtube_music_window_open || youtube_music_confirming;
                         let message = youtube_music::state_message(youtube_music_state.as_ref(), signing_in);
@@ -1104,6 +1113,13 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                     if netease_music.is_none() && matches!(command, netease_music::Command::Pause) {
                         // Nothing to pause: NetEase Cloud Music isn't running.
                     } else if let Some(player) = start_netease_music(&mut netease_music, &stage, &config) {
+                        let _ = player.command(&command);
+                    }
+                }
+                Some(PageMessage::Radio { command }) => {
+                    if radio.is_none() && matches!(command, radio::Command::Pause) {
+                        // Nothing to pause: radio.cn isn't running.
+                    } else if let Some(player) = start_radio(&mut radio, &stage, &config) {
                         let _ = player.command(&command);
                     }
                 }
@@ -1776,6 +1792,40 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
             }
         }
 
+        // What radio.cn's page says, for the page; a failed WebView closes it.
+        if let Some(player) = &radio {
+            if player.failed() || players_closing {
+                if players_closing {
+                    log!("[radio] closed with the game");
+                } else {
+                    log!("[radio] its browser failed: closed, the page opens it again");
+                }
+                if let Some(failed) = radio.take() {
+                    failed.close(&stage);
+                }
+                radio_playback = None;
+                let _ = webview.post_json(&radio::playback_message(None));
+            } else {
+                for report in player.take_reports() {
+                    match report {
+                        radio::Report::Spectrum(bars) => {
+                            let _ = webview.post_json(&speakers::spectrum_message(&bars));
+                        }
+                        radio::Report::Stations { region, stations, failed } => {
+                            let message = radio::stations_message(&region, &stations, failed);
+                            let _ = webview.post_json(&message);
+                        }
+                        radio::Report::Playback(playback) => {
+                            let message = radio::playback_message(playback.as_deref());
+                            let _ = webview.post_json(&message);
+                            radio_playback = Some(message);
+                        }
+                        radio::Report::Log(line) => log!("[radio] {line}"),
+                    }
+                }
+            }
+        }
+
         // What Safari's pages say, for the page; its browser failing closes it, as the game closing does (every tab
         // let go: the page shows them again as it wants them).
         if let Some(browser) = &mut safari {
@@ -1985,6 +2035,20 @@ pub fn run(mut config: Config, stop: Arc<AtomicBool>) -> Result<(), Error> {
                 );
             }
             if let Some(player) = &netease_music {
+                let _ = player.cab(
+                    truck_speakers,
+                    head,
+                    outside,
+                    distance,
+                    equalizer,
+                    reverb,
+                    character,
+                    reflection,
+                    bass,
+                    spectrum,
+                );
+            }
+            if let Some(player) = &radio {
                 let _ = player.cab(
                     truck_speakers,
                     head,
@@ -2547,6 +2611,22 @@ fn start_netease_music<'a>(
     netease_music.as_ref()
 }
 
+/// radio.cn's page, started as the Radio app first asks (on a WebView2 profile of its own), or `None` if it
+/// couldn't start.
+fn start_radio<'a>(radio: &'a mut Option<radio::Radio>, stage: &Stage, config: &Config) -> Option<&'a radio::Radio> {
+    if radio.is_none() {
+        let user_data = config.data_dir.join("webview2-radio");
+        match radio::Radio::start(stage, config.width, config.height, &user_data) {
+            Ok(started) => {
+                log!("[radio] opened");
+                *radio = Some(started)
+            }
+            Err(e) => startup::mark(&format!("host: radio.cn couldn't start: {e}")),
+        }
+    }
+    radio.as_ref()
+}
+
 /// Player's own player, started as the page first plays (on the cabin page's profile, as YouTube Music's), the
 /// songs of `music` served to it; or `None` if it couldn't start.
 fn start_music_player<'a>(
@@ -2763,6 +2843,8 @@ enum PageMessage {
     QqMusic { command: qq_music::Command },
     /// A command for NetEase Cloud Music's web player (`neteaseMusic`): its sign-in, a question, its controls.
     NeteaseMusic { command: netease_music::Command },
+    /// A command for radio.cn's page (`radio`): its stations and player.
+    Radio { command: radio::Command },
     /// A command for YouTube Music's web player (`youtubeMusic`): its sign-in, a question, its controls.
     YoutubeMusic { command: youtube_music::Command },
     /// A command for Player's own player (`player`): what to play from the music folder, its controls.

@@ -45,6 +45,10 @@ import {
   useNeteaseMusic,
 } from '../apps/neteaseMusic/neteaseMusic'
 import {
+  receivePlayback as receiveRadioPlayback,
+  receiveStations as receiveRadioStations,
+} from '../apps/radio/radio'
+import {
   receiveAnswer as receiveSpotifyAnswer,
   receivePlayback,
   receiveState as receiveSpotifyState,
@@ -771,6 +775,12 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
         break
       case 'neteaseMusicPlayback':
         receiveNeteaseMusicPlayback(message.playback)
+        break
+      case 'radioStations':
+        receiveRadioStations(message.region, message.stations, message.failed)
+        break
+      case 'radioPlayback':
+        receiveRadioPlayback(message.playback)
         break
       case 'musicFolder':
         receiveFolder(message.folder, message.songs)

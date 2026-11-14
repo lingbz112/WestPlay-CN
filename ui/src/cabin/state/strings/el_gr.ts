@@ -528,6 +528,7 @@ export const strings: Strings = {
     messages: 'Μηνύματα',
     calendar: 'Ημερολόγιο',
     weather: 'Καιρός',
+    radio: 'Radio',
     settings: 'Ρυθμίσεις',
   },
   notBuiltYet: 'Αυτή η εφαρμογή δεν είναι ακόμη έτοιμη.',

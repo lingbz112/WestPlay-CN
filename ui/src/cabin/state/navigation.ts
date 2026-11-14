@@ -33,7 +33,7 @@ export const RECENTS_LIMIT = APP_IDS.length
  */
 const SIDEBAR_SLOTS: readonly (readonly AppId[])[] = [
   ['maps'],
-  ['music', 'qqMusic', 'neteaseMusic', 'spotify', 'youtubeMusic', 'player', 'podcasts'],
+  ['music', 'qqMusic', 'neteaseMusic', 'radio', 'spotify', 'youtubeMusic', 'player', 'podcasts'],
   ['phone', 'messages'],
   ['calendar', 'weather', 'settings', 'safari'],
 ]

@@ -523,6 +523,7 @@ export const strings: Strings = {
     messages: 'メッセージ',
     calendar: 'カレンダー',
     weather: '天気',
+    radio: 'Radio',
     settings: '設定',
   },
   notBuiltYet: 'このアプリはまだ準備中です。',

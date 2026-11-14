@@ -548,6 +548,7 @@ export const strings: Strings = {
     messages: 'Ziņas',
     calendar: 'Kalendārs',
     weather: 'Laikapstākļi',
+    radio: 'Radio',
     settings: 'Iestatījumi',
   },
   notBuiltYet: 'Šī lietotne vēl nav gatava.',

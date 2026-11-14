@@ -522,6 +522,7 @@ export const strings: Strings = {
     messages: '메시지',
     calendar: '캘린더',
     weather: '날씨',
+    radio: 'Radio',
     settings: '설정',
   },
   notBuiltYet: '이 앱은 아직 준비 중입니다.',

@@ -523,6 +523,7 @@ export const strings: Strings = {
     messages: 'Mesajlar',
     calendar: 'Takvim',
     weather: 'Hava Durumu',
+    radio: 'Radio',
     settings: 'Ayarlar',
   },
   notBuiltYet: 'Bu uygulama henüz hazır değil.',

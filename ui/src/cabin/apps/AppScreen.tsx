@@ -9,6 +9,7 @@ import { isCopied, noteOpened, openedBefore, saveCopy, savedCopy } from './launc
 import { MusicApp } from './music/MusicApp'
 import { NeteaseMusicApp } from './neteaseMusic/NeteaseMusicApp'
 import { PlayerApp } from './player/PlayerApp'
+import { RadioApp } from './radio/RadioApp'
 import { SafariApp } from './safari/SafariApp'
 import { QqMusicApp } from './qqMusic/QqMusicApp'
 import { SettingsApp } from './settings/SettingsApp'
@@ -92,6 +93,8 @@ function AppContent({ app }: { app: AppId }) {
       return <SpotifyApp />
     case 'youtubeMusic':
       return <YouTubeMusicApp />
+    case 'radio':
+      return <RadioApp />
     case 'settings':
       return <SettingsApp />
     case 'weather':

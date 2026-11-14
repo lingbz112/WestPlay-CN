@@ -537,6 +537,7 @@ export const strings: Strings = {
     messages: 'Mensajes',
     calendar: 'Calendario',
     weather: 'Tiempo',
+    radio: 'Radio',
     settings: 'Ajustes',
   },
   notBuiltYet: 'Esta app aún no está lista.',

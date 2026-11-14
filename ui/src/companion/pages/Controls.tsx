@@ -83,6 +83,8 @@ function Keybinds({
     playPause: w.playPause,
     volumeUp: w.volumeUp,
     nextTrack: w.nextTrack,
+    brightnessDown: w.brightnessDown,
+    brightnessUp: w.brightnessUp,
   }
   const listen = useCallback(
     (which: KeybindId | 'screen') => (on: boolean) => {

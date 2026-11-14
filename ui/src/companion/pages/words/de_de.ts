@@ -68,6 +68,15 @@ export const words: CompanionWords = {
     gpuAutoDetail: 'Die Karte, auf der das Spiel läuft',
     gpuInUse: 'In Verwendung',
     gpuNote: 'Wenn der Bildschirm ruckelt, wähle eine andere Karte. WestPlay startet dann darauf neu.',
+    coachSpeakers: 'Lautsprecher im Reisebus',
+    coachDriver: 'Lautsprecher des Fahrers',
+    coachDriverDetail: 'Die am Fahrersitz',
+    coachPassengers: 'Lautsprecher der Fahrgäste',
+    coachPassengersDetail: 'Alle über den Sitzen',
+    coachNote:
+      'Lautsprecher der Fahrgäste in diesem Reisebus: {n}, alle zugleich. Auf einem schwachen Prozessor kann das Spiel damit ruckeln.',
+    coachNoteAny:
+      'Im Reisebus spielen die Lautsprecher der Fahrgäste alle zugleich. Auf einem schwachen Prozessor kann das Spiel damit ruckeln.',
     elevated: {
       title: 'Das Spiel läuft als Administrator',
       text: 'Dann kann WestPlay Route, Zielführung und Wetter des Spiels nicht lesen. Starte das Spiel normal, nicht als Administrator.',
@@ -100,6 +109,8 @@ export const words: CompanionWords = {
     playPause: 'Wiedergabe/Pause',
     previousTrack: 'Previous track',
     nextTrack: 'Next track',
+    brightnessDown: 'Dunkler',
+    brightnessUp: 'Heller',
     pressKey: 'Taste drücken …',
     keybindsNote:
       'Klicke auf eine Belegung und drücke dann die neue Taste. Hältst du dabei {key}, wirkt sie nur, während du den Bildschirm bedienst. Esc bricht ab.',
@@ -133,6 +144,11 @@ export const words: CompanionWords = {
     notBuilt: 'Noch nicht vorbereitet',
     profiles: 'Profile',
     checking: 'Profile werden geprüft …',
+    gameStopped: {
+      title: 'Kartenvorbereitung angehalten',
+      text: 'Du hast das Spiel gestartet, während deine Karte vorbereitet wurde, darum wurde sie angehalten. Sie beginnt von vorn, sobald du das Spiel schließt. Warte, bis deine Karte fertig ist, bevor du spielst.',
+      ok: 'OK',
+    },
     memory: {
       title: 'Warten auf freien Arbeitsspeicher',
       banner: { title: 'Warten auf freien Arbeitsspeicher', text: 'Schließe ein paar Apps für die Karte' },

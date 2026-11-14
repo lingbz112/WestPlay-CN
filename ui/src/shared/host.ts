@@ -86,8 +86,16 @@ export interface JobInfo {
   income: number
 }
 
-/** What a keybind does: the music's volume a step up or down, play/pause, or the previous or next track. */
-export type KeybindAction = 'volumeUp' | 'volumeDown' | 'playPause' | 'previousTrack' | 'nextTrack'
+/** What a keybind does: the music's volume a step up or down, play/pause, the previous or next track, or the
+ * screen's brightness down or up; a volume key held also changes the song. */
+export type KeybindAction =
+  | 'volumeUp'
+  | 'volumeDown'
+  | 'playPause'
+  | 'previousTrack'
+  | 'nextTrack'
+  | 'brightnessDown'
+  | 'brightnessUp'
 
 export type HostMessage =
   | { type: 'telemetry'; data: Telemetry }
@@ -487,6 +495,9 @@ export type PageMessage =
   | { type: 'ready' }
   /** A startup stage reached (the boot screens shown), for the host's startup log. */
   | { type: 'startup'; stage: string }
+  /** The cab's guidance (the next turn it shows and how far), every 30 s while there's a route, for the host's log
+   * (cabin/maps/guidanceLog.ts). */
+  | { type: 'guidance'; line: string }
   /** Whether WestPlay is open on the truck's screen (or the truck's original screen shows): posted as the
    * page connects and whenever it changes, for the companion window. */
   | { type: 'westplay'; open: boolean }

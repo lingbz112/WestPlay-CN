@@ -67,6 +67,13 @@ export const words: CompanionWords = {
     gpuAutoDetail: 'Kortet spillet kjører på',
     gpuInUse: 'I bruk',
     gpuNote: 'Hakker skjermen? Velg et annet kort, så starter WestPlay på nytt på det.',
+    coachSpeakers: 'Bussens høyttalere',
+    coachDriver: 'Sjåførens høyttalere',
+    coachDriverDetail: 'De ved førersetet',
+    coachPassengers: 'Passasjerenes høyttalere',
+    coachPassengersDetail: 'Alle over setene',
+    coachNote: 'Passasjerenes høyttalere i denne bussen: {n}, alle samtidig. På en svak prosessor kan spillet hakke.',
+    coachNoteAny: 'I en buss spiller passasjerenes høyttalere alle samtidig. På en svak prosessor kan spillet hakke.',
     elevated: {
       title: 'Spillet kjører som administrator',
       text: 'Da kan ikke WestPlay lese ruten, veiledningen eller været i spillet. Start spillet på vanlig måte, ikke som administrator.',
@@ -99,6 +106,8 @@ export const words: CompanionWords = {
     playPause: 'Spill av/Pause',
     previousTrack: 'Previous track',
     nextTrack: 'Next track',
+    brightnessDown: 'Lysstyrke ned',
+    brightnessUp: 'Lysstyrke opp',
     pressKey: 'Trykk en tast …',
     keybindsNote:
       'Klikk på en hurtigtast, og trykk så den nye tasten. Holder du {key} nede samtidig, virker den bare mens du bruker skjermen. Esc avbryter.',
@@ -132,6 +141,11 @@ export const words: CompanionWords = {
     notBuilt: 'Ikke gjort klart ennå',
     profiles: 'Profiler',
     checking: 'Ser gjennom profilene …',
+    gameStopped: {
+      title: 'Klargjøringen av kartet stoppet',
+      text: 'Du startet spillet mens kartet ditt ble laget, så det stoppet. Det starter på nytt når du lukker spillet. Vent til kartet er klart før du spiller.',
+      ok: 'OK',
+    },
     memory: {
       title: 'Venter på ledig minne',
       banner: { title: 'Venter på ledig minne', text: 'Lukk noen apper for å lage kartet' },

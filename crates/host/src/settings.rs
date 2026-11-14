@@ -117,6 +117,9 @@ pub struct SoundSettings {
     /// Always-on bass management's mono crossover.
     #[serde(deserialize_with = "lenient")]
     pub bass: crate::speakers::BassManagement,
+    /// Which of a coach's speakers play (the companion's Truck Screen page).
+    #[serde(deserialize_with = "lenient")]
+    pub coach: CoachSpeakers,
 }
 
 impl Default for SoundSettings {
@@ -130,8 +133,20 @@ impl Default for SoundSettings {
             character: Default::default(),
             reflection: Default::default(),
             bass: Default::default(),
+            coach: CoachSpeakers::default(),
         }
     }
+}
+
+/// Which of a coach's speakers play (owner 2026-11-13: a setting of the companion's, not the cab's, as real coaches
+/// have a cockpit system and a passengers' one): the driver's, round the seat, or the passengers', every overhead unit
+/// along the aisle heard from the seat (up to 28 at once: a weak processor feels it, the companion says so).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CoachSpeakers {
+    #[default]
+    Driver,
+    Passengers,
 }
 
 impl SoundSettings {
@@ -305,7 +320,8 @@ impl<'de> Deserialize<'de> for KeyCode {
 }
 
 /// The keys for what WestPlay does from the game (owner 2026-10-21: every keybind customizable in the
-/// companion): the playing app's volume up and down a step, play or pause it, and the track before or after it.
+/// companion): the playing app's volume up and down a step, play or pause it, the track before or after it,
+/// and the screen's brightness down or up.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Keybinds {
@@ -314,6 +330,8 @@ pub struct Keybinds {
     pub play_pause: Binding,
     pub previous_track: Binding,
     pub next_track: Binding,
+    pub brightness_down: Binding,
+    pub brightness_up: Binding,
 }
 
 impl<'de> Deserialize<'de> for Keybinds {
@@ -331,13 +349,16 @@ impl<'de> Deserialize<'de> for Keybinds {
             play_pause: binding("playPause", defaults.play_pause),
             previous_track: binding("previousTrack", defaults.previous_track),
             next_track: binding("nextTrack", defaults.next_track),
+            brightness_down: binding("brightnessDown", defaults.brightness_down),
+            brightness_up: binding("brightnessUp", defaults.brightness_up),
         })
     }
 }
 
 impl Default for Keybinds {
     /// The interaction key with 1, 2 and 3 (as promised to the players who asked: Alt+1, Alt+2, Alt+3), in a
-    /// row as on a stereo (owner 2026-10-21): volume down, play/pause between, volume up.
+    /// row as on a stereo (owner 2026-10-21): volume down, play/pause between, volume up; then the screen's
+    /// brightness down and up with 4 and 5 (owner 2026-11-13).
     fn default() -> Self {
         let with_key = |code| Binding { key: KeyCode(code), with_interaction_key: true };
         // The previous and next track keys stand alone, as on a keyboard's media row: they work anywhere in
@@ -348,23 +369,30 @@ impl Default for Keybinds {
             volume_up: with_key(0x33),
             previous_track: Binding { key: KeyCode(0xb1), with_interaction_key: false },
             next_track: Binding { key: KeyCode(0xb0), with_interaction_key: false },
+            brightness_down: with_key(0x34),
+            brightness_up: with_key(0x35),
         }
     }
 }
 
 impl Keybinds {
-    /// Each keybind as the bridge carries it ([`westplay_shared::keybind_value`]), in [`Keybind::ALL`]'s order.
+    /// Each keybind as the bridge carries it ([`westplay_shared::keybind_value`]), in [`Keybind::ALL`]'s order. One
+    /// pressed as one before it is (a player's own Alt+4 for a volume key, from before the brightness keys took 4
+    /// and 5 by default) is left unbound (0): the player's own keeps the key, and one press never does two things.
     pub fn bridge_values(&self) -> [u32; KEYBIND_COUNT] {
-        Keybind::ALL.map(|keybind| {
+        let values = Keybind::ALL.map(|keybind| {
             let binding = match keybind {
                 Keybind::VolumeUp => self.volume_up,
                 Keybind::VolumeDown => self.volume_down,
                 Keybind::PlayPause => self.play_pause,
                 Keybind::PreviousTrack => self.previous_track,
                 Keybind::NextTrack => self.next_track,
+                Keybind::BrightnessDown => self.brightness_down,
+                Keybind::BrightnessUp => self.brightness_up,
             };
             keybind_value(binding.key.virtual_key(), binding.with_interaction_key)
-        })
+        });
+        std::array::from_fn(|i| if values[..i].contains(&values[i]) { 0 } else { values[i] })
     }
 }
 
@@ -591,11 +619,13 @@ mod tests {
                 character: crate::speakers::CabinCharacter::Full,
                 reflection: crate::speakers::CabinReflection { amount: 80 },
                 bass: crate::speakers::BassManagement { cutoff: 70 },
+                coach: CoachSpeakers::Passengers,
             },
             map: MapSettings { buildings: false, roads: false, fast: true },
             language: LanguageCode::new("pt_br"),
         };
         let json = to_json(&settings);
+        assert!(json.contains("\"coach\": \"passengers\""), "{json}");
         assert!(json.contains("\"version\": 2"), "{json}");
         assert!(json.contains("\"key\": 5"), "{json}");
         assert!(json.contains("\"mode\": \"toggle\""), "{json}");
@@ -622,6 +652,11 @@ mod tests {
         assert_eq!(
             [partial.keybinds.volume_down, partial.keybinds.play_pause, partial.keybinds.volume_up],
             [with_key(0x31), with_key(0x32), with_key(0x33)]
+        );
+        // And from before the brightness keys: the interaction key with 4 (down) and 5 (up).
+        assert_eq!(
+            [partial.keybinds.brightness_down, partial.keybinds.brightness_up],
+            [with_key(0x34), with_key(0x35)]
         );
         // Files from before the truck strip was a setting keep it on Auto.
         assert_eq!(partial.screen.truck_strip, TruckStrip::Auto);
@@ -673,6 +708,44 @@ mod tests {
         );
         // Not an object at all: every default.
         assert_eq!(parse(r#"{"version": 2, "keybinds": 4}"#).unwrap().keybinds, defaults);
+    }
+
+    #[test]
+    fn a_keybind_pressed_as_one_before_it_is_left_unbound() {
+        let with_key = |code| keybind_value(code, true);
+        let defaults = Keybinds::default();
+        // Volume up, Volume down, Play/Pause, Brightness down/up, Previous/Next track, as the bridge orders them.
+        assert_eq!(
+            defaults.bridge_values(),
+            [
+                with_key(0x33),
+                with_key(0x31),
+                with_key(0x32),
+                with_key(0x34),
+                with_key(0x35),
+                keybind_value(0xb1, false),
+                keybind_value(0xb0, false),
+            ]
+        );
+        // A player's own Alt+4 for Volume up (from before the brightness keys): theirs keeps it.
+        let own = Binding { key: KeyCode::new(0x34).unwrap(), with_interaction_key: true };
+        let keybinds = Keybinds { volume_up: own, ..defaults };
+        assert_eq!(
+            keybinds.bridge_values(),
+            [
+                with_key(0x34),
+                with_key(0x31),
+                with_key(0x32),
+                0,
+                with_key(0x35),
+                keybind_value(0xb1, false),
+                keybind_value(0xb0, false),
+            ]
+        );
+        // 4 alone is another keybind than Alt+4.
+        let alone = Binding { key: KeyCode::new(0x34).unwrap(), with_interaction_key: false };
+        let keybinds = Keybinds { volume_up: alone, ..defaults };
+        assert_eq!(keybinds.bridge_values()[3], with_key(0x34));
     }
 
     #[test]

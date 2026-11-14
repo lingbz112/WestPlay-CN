@@ -67,6 +67,13 @@ export const words: CompanionWords = {
     gpuAutoDetail: 'Kartica, na kateri teče igra',
     gpuInUse: 'V uporabi',
     gpuNote: 'Če se zaslon zatika, izberi drugo kartico. WestPlay se nato znova zažene na njej.',
+    coachSpeakers: 'Zvočniki v avtobusu',
+    coachDriver: 'Voznikovi zvočniki',
+    coachDriverDetail: 'Tisti pri voznikovem sedežu',
+    coachPassengers: 'Zvočniki za potnike',
+    coachPassengersDetail: 'Vsi nad sedeži',
+    coachNote: 'Zvočniki za potnike v tem avtobusu: {n}, vsi hkrati. Na šibkem procesorju se igra lahko zatika.',
+    coachNoteAny: 'V avtobusu zvočniki za potnike igrajo vsi hkrati. Na šibkem procesorju se igra lahko zatika.',
     elevated: {
       title: 'Igra teče kot skrbnik',
       text: 'Zato WestPlay iz igre ne more brati poti, navodil za vožnjo in vremena. Zaženi igro običajno, ne kot skrbnik.',
@@ -99,6 +106,8 @@ export const words: CompanionWords = {
     playPause: 'Predvajaj/premor',
     previousTrack: 'Previous track',
     nextTrack: 'Next track',
+    brightnessDown: 'Temneje',
+    brightnessUp: 'Svetleje',
     pressKey: 'Pritisni tipko …',
     keybindsNote:
       'Klikni dejanje in pritisni novo tipko. Če ob tem držiš {key}, tipka deluje le, ko upravljaš zaslon. Esc prekliče.',
@@ -132,6 +141,11 @@ export const words: CompanionWords = {
     notBuilt: 'Še ni pripravljen',
     profiles: 'Profili',
     checking: 'Pregledovanje profilov …',
+    gameStopped: {
+      title: 'Priprava zemljevida se je ustavila',
+      text: 'Igra se je zagnala, medtem ko se je zemljevid pripravljal, zato se je priprava ustavila. Začela se bo znova, ko zapreš igro. Pred igranjem počakaj, da bo zemljevid pripravljen.',
+      ok: 'V redu',
+    },
     memory: {
       title: 'Čakanje na prosti pomnilnik',
       banner: { title: 'Čakanje na prosti pomnilnik', text: 'Zapri nekaj aplikacij, da se zemljevid pripravi' },

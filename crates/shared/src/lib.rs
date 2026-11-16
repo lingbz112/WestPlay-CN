@@ -80,7 +80,8 @@ pub fn screen_layouts() -> &'static [ScreenLayout] {
 /// 2024) 19.87 x 11.35 cm (1.750:1); the DAF 2021's 22.37 x 12.58 cm and the Renault T 2024's 19.93 x 11.21 cm,
 /// 16:9, the frame's own. The Coaches DLC's (2026-11-12, their interiors' models' `gps.tobj` pieces, each showing
 /// its script's whole screen): the Scania Touring's 19.43 x 11.08 cm (1.754:1, its corners rounded), the MAN Lion's
-/// Coach 2024's 15.69 x 9.61 cm (1.633:1).
+/// Coach 2024's 15.69 x 9.61 cm (1.633:1); the Road Trip DLC's Ford Bronco (2024) and F-150 (2023), their
+/// centre displays' UI 1280 x 800 (1.6:1, each script's `display1` group).
 pub fn page_height(index: usize) -> u32 {
     match screen_layouts().get(index).map(|layout| layout.id) {
         Some("generic") => 793,
@@ -95,6 +96,8 @@ pub fn page_height(index: usize) -> u32 {
         Some("man-lions-coach") => 778,
         Some("scania-touring") => 730,
         Some("man-lions-24") => 784,
+        Some("bronco-24") => 800,
+        Some("f150-2023") => 800,
         _ => SCREEN_HEIGHT,
     }
 }

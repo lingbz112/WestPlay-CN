@@ -265,10 +265,52 @@ const ACTROS_2014: &[Speaker] = &[
     speaker([4000.0, OPEN], 0.0, Channel::Right, [1.068, 1.508, -0.237]),
 ];
 
+/// The Ford Bronco (2024, the Road Trip DLC's), as the owner marked it in the interior model (its origin the
+/// driver's head, x right): two A-pillar tweeters, a door unit each side, the dash's centre fill, and the cargo
+/// area's unit. In the car's cab space the head, the model's origin, is at (-0.4025, -1.43, 2.1117), the cab
+/// turning at (0, 3, -2) (the plugin's log, 2026-11-15): the owner's points, in that space, are these plus the
+/// head's. The levels are the owner's tuning (2026-11-15): the rear doors' and the cargo unit's louder.
+const FORD_BRONCO_24: &[Speaker] = &[
+    speaker([2000.0, OPEN], 0.0, Channel::Right, [0.634, -1.515, 1.303]),
+    speaker([2000.0, OPEN], 0.0, Channel::Left, [-0.634, -1.515, 1.303]),
+    speaker([60.0, 800.0], 0.0, Channel::Right, [0.715, -2.147, 1.350]),
+    speaker([60.0, 800.0], 5.0, Channel::Right, [0.711, -2.163, 2.424]),
+    speaker([60.0, 800.0], 5.0, Channel::Left, [-0.711, -2.163, 2.424]),
+    speaker([60.0, 800.0], 0.0, Channel::Left, [-0.714, -2.132, 1.446]),
+    speaker([300.0, 3000.0], 0.0, Channel::Both, [-0.006, -1.580, 1.117]),
+    speaker([OPEN, 90.0], 10.0, Channel::Left, [-0.003, -2.123, 3.133]),
+];
+
+/// The Ford F-150 (2023, the Road Trip DLC's), as the owner marked it in the Lariat interior model (its origin
+/// the driver's head, x right): a tweeter in each A-pillar, a mid-woofer and a midrange in each front door, the
+/// dash's centre, a mid-woofer and a tweeter in each rear door, two overhead units each row, and the cargo area's
+/// subwoofer. In the car's cab space the head, the model's origin, is at (-0.459, -1.400, 1.657), the cab turning
+/// at (0, 3, -2) (the plugin's log, 2026-11-15): the owner's points, in that space, are these plus the head's.
+const FORD_F150_23: &[Speaker] = &[
+    speaker([4000.0, OPEN], 0.0, Channel::Right, [0.681, -1.600, 0.578]),
+    speaker([4000.0, OPEN], 0.0, Channel::Left, [-0.681, -1.600, 0.578]),
+    speaker([50.0, 300.0], 0.0, Channel::Right, [0.800, -2.064, 0.849]),
+    speaker([50.0, 300.0], 0.0, Channel::Left, [-0.800, -2.064, 0.849]),
+    speaker([300.0, 4000.0], 0.0, Channel::Right, [0.866, -1.821, 1.010]),
+    speaker([300.0, 4000.0], 0.0, Channel::Left, [-0.866, -1.821, 1.010]),
+    speaker([300.0, 4000.0], -3.0, Channel::Both, [0.005, -1.559, 0.657]),
+    speaker([50.0, 400.0], 0.0, Channel::Right, [0.798, -2.125, 2.093]),
+    speaker([50.0, 400.0], 0.0, Channel::Left, [-0.798, -2.125, 2.093]),
+    speaker([4000.0, OPEN], 0.0, Channel::Right, [0.839, -1.805, 2.041]),
+    speaker([4000.0, OPEN], 0.0, Channel::Left, [-0.839, -1.805, 2.041]),
+    speaker([400.0, 6000.0], -10.0, Channel::Right, [0.510, -1.180, 1.582]),
+    speaker([400.0, 6000.0], -10.0, Channel::Left, [-0.510, -1.180, 1.582]),
+    speaker([400.0, 6000.0], -10.0, Channel::Right, [0.555, -1.177, 2.646]),
+    speaker([400.0, 6000.0], -10.0, Channel::Left, [-0.555, -1.177, 2.646]),
+    speaker([OPEN, 80.0], 7.0, Channel::Both, [-0.025, -2.257, 2.720]),
+];
+
 /// The speakers of the truck with this SDK model id (with or without its `vehicle.` prefix), or `None` for a
 /// truck whose speakers aren't known (its sound plays as it is).
 pub fn in_truck(id: &str) -> Option<&'static [Speaker]> {
     match id.strip_prefix("vehicle.").unwrap_or(id) {
+        "ford.bronco_24" => Some(FORD_BRONCO_24),
+        "ford.f150_23" => Some(FORD_F150_23),
         // The S BEV: the S's cab, its own interior the S's but for the dashboard and seats (doors, pillars, roof
         // grille alike), turned on the same point (owner 2026-10-26: "same cab with S, no difference").
         "scania.s_2016" | "scania.s_2024e" => Some(SCANIA_S),

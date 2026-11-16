@@ -42,3 +42,9 @@ man-lions-coach   ui/dashboard/westplay_man_lions_coach_gps.sii
 # 512 x 256 surface the mod draws at 1024 x 512, of which their displays show the whole.
 scania-touring    ui/dashboard/scania_touring_23_gps.sii
 man-lions-24      ui/dashboard/man_lions_24_gps.sii
+# The Road Trip DLC's Ford Bronco (2024, its own screen: interior/computers.sui), the studio's centre display
+# (a 1280 x 800 UI, its `display1` group whole) drawn on 1024 x 512 (its interior's computers.sui).
+bronco-24         ui/dashboard/ford_bronco_gps_24.sii
+# The Road Trip DLC's Ford F-150 (2023), its own centre screen (interior/computers.sui): the same 1280 x 800
+# UI (its `display1` group whole) drawn on 1024 x 512.
+f150-2023         ui/dashboard/ford_f150_gps_23.sii

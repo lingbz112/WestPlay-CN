@@ -905,6 +905,8 @@ export interface AppleMusicArtist {
   item: AppleMusicItem
   top: AppleMusicTrack[]
   sections: AppleMusicSection[]
+  /** Its albums, where the service answers them on its own (QQ Music's page shows them as a group). */
+  albums?: AppleMusicItem[]
 }
 
 export interface AppleMusicResults {
@@ -933,9 +935,9 @@ export type AppleMusicQuestion =
   | { ask: 'radio' }
   | { ask: 'browse' }
   | { ask: 'curator'; id: string }
-  | { ask: 'search'; query: string }
+  | { ask: 'search'; query: string; page?: number; group?: 'songs' | 'artists' | 'albums' | 'playlists' }
   | { ask: 'collection'; id: string }
-  | { ask: 'artist'; id: string }
+  | { ask: 'artist'; id: string; page?: number }
   | { ask: 'library'; shelf: AppleMusicShelf; sort?: string; folder?: string; language?: string }
   | { ask: 'lyrics'; id: string }
 
@@ -958,7 +960,7 @@ export interface AppleMusicAnswers {
  * right to left. No lines: no words for the song. */
 export interface Lyrics {
   synced: boolean
-  lines: { start: number; end: number; text: string; stanza?: boolean }[]
+  lines: { start: number; end: number; text: string; translation?: string; stanza?: boolean }[]
   provider?: string
   writers?: string[]
   colors?: { background: string; text: string; highlight: string }

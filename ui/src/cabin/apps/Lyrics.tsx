@@ -69,10 +69,12 @@ export function LyricsLines({
             }}
           >
             {line.text}
+            {line.translation && <span className="lyric-translation">{line.translation}</span>}
           </button>
         ) : (
           <p key={i} className={name}>
             {line.text}
+            {line.translation && <span className="lyric-translation">{line.translation}</span>}
           </p>
         )
       })}

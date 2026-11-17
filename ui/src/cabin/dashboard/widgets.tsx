@@ -1,15 +1,29 @@
+import { useEffect, useRef, useState } from 'react'
 import { type Backdrop, type Look, useWordsOver, wordsClass } from '../apps/music/contrast'
 import { Crossfade } from '../apps/music/Crossfade'
 import { VideoWidget } from '../apps/youtube/VideoWidget'
 import { NextGlyph, NoteGlyph, PauseGlyph, PlayGlyph, PreviousGlyph } from '../apps/music/glyphs'
 import { TrackSlide } from '../apps/music/TrackSlide'
 import { useTrackTransition } from '../apps/music/useTrackTransition'
-import { playOrPause, skip, useSpotify, useSpotifySource } from '../apps/spotify/spotify'
 import {
+  currentTrack as currentSpotifyTrack,
+  playOrPause,
+  positionOf as positionOfSpotify,
+  skip,
+  useAsked as useAskedSpotify,
+  useNow as useNowSpotify,
+  useSpotify,
+  useSpotifySource,
+} from '../apps/spotify/spotify'
+import {
+  currentTrack as currentAppleMusicTrack,
   playOrPause as playOrPauseAppleMusic,
+  positionOf as positionOfAppleMusic,
   skip as skipAppleMusic,
   useAppleMusic,
   useAppleMusicSource,
+  useAsked as useAskedAppleMusic,
+  useNow as useNowAppleMusic,
 } from '../apps/music/appleMusic'
 import {
   playOrPause as playOrPauseYouTubeMusic,
@@ -19,16 +33,26 @@ import {
 } from '../apps/youtubeMusic/youtubeMusic'
 import { playOrPause as playOrPausePlayer, skip as skipPlayer, usePlayer, usePlayerSource } from '../apps/player/player'
 import {
+  currentTrack,
   playOrPause as playOrPauseQqMusic,
+  positionOf,
   skip as skipQqMusic,
+  useAsked,
+  useNow,
   useQqMusic,
   useQqMusicSource,
 } from '../apps/qqMusic/qqMusic'
+import { lineAt } from '../apps/lyricsTime'
+import type { Lyrics } from '../../shared/host'
 import {
+  currentTrack as currentNeteaseTrack,
   playOrPause as playOrPauseNeteaseMusic,
+  positionOf as positionOfNeteaseMusic,
   skip as skipNeteaseMusic,
+  useAsked as useAskedNeteaseMusic,
   useNeteaseMusic,
   useNeteaseMusicSource,
+  useNow as useNowNeteaseMusic,
 } from '../apps/neteaseMusic/neteaseMusic'
 import { playOrPause as playOrPauseRadio, skip as skipRadio, useRadioSource } from '../apps/radio/radio'
 import type { MediaAction, MediaSource } from '../../shared/media'
@@ -69,10 +93,20 @@ export function NowPlayingWidget() {
 
 /** QQ Music's current song and queue, opening the copied Music app on Now Playing. */
 function QqMusicWidget({ qqMusic }: { qqMusic: NonNullable<ReturnType<typeof useQqMusicSource>> }) {
+  const playback = useQqMusic((state) => state.playback)
+  const track = currentTrack(playback)
+  const asked = useAsked(track ? { ask: 'lyrics', id: track.id } : null)
+  const now = useNow(playback?.playing ?? false)
+  const lyrics = asked.answer
   return (
     <MusicWidget
       source={qqMusic.source}
       artwork={qqMusic.artwork}
+      lyrics={
+        track
+          ? { id: track.id, lyrics: lyrics ?? null, position: playback ? positionOf(playback, now) : 0 }
+          : null
+      }
       onOpen={() => {
         useQqMusic.setState({ nowPlaying: true })
         go({ type: 'openApp', app: 'qqMusic' })
@@ -88,10 +122,23 @@ function QqMusicWidget({ qqMusic }: { qqMusic: NonNullable<ReturnType<typeof use
 
 /** NetEase Cloud Music's current song and queue, opening the copied Music app on Now Playing. */
 function NeteaseMusicWidget({ neteaseMusic }: { neteaseMusic: NonNullable<ReturnType<typeof useNeteaseMusicSource>> }) {
+  const playback = useNeteaseMusic((state) => state.playback)
+  const track = currentNeteaseTrack(playback)
+  const asked = useAskedNeteaseMusic(track ? { ask: 'lyrics', id: track.id } : null)
+  const now = useNowNeteaseMusic(playback?.playing ?? false)
   return (
     <MusicWidget
       source={neteaseMusic.source}
       artwork={neteaseMusic.artwork}
+      lyrics={
+        track
+          ? {
+              id: track.id,
+              lyrics: asked.answer ?? null,
+              position: playback ? positionOfNeteaseMusic(playback, now) : 0,
+            }
+          : null
+      }
       onOpen={() => {
         useNeteaseMusic.setState({ nowPlaying: true })
         go({ type: 'openApp', app: 'neteaseMusic' })
@@ -123,10 +170,23 @@ function RadioWidget({ radio }: { radio: NonNullable<ReturnType<typeof useRadioS
 
 /** Apple Music's music (the Music app's): what plays, its controls, opening Music on Now Playing. */
 function AppleMusicWidget({ appleMusic }: { appleMusic: NonNullable<ReturnType<typeof useAppleMusicSource>> }) {
+  const playback = useAppleMusic((state) => state.playback)
+  const track = currentAppleMusicTrack(playback)
+  const asked = useAskedAppleMusic(track ? { ask: 'lyrics', id: track.id } : null)
+  const now = useNowAppleMusic(playback?.playing ?? false)
   return (
     <MusicWidget
       source={appleMusic.source}
       artwork={appleMusic.artwork}
+      lyrics={
+        track
+          ? {
+              id: track.id,
+              lyrics: asked.answer ?? null,
+              position: playback ? positionOfAppleMusic(playback, now) : 0,
+            }
+          : null
+      }
       onOpen={() => {
         useAppleMusic.setState({ nowPlaying: true })
         go({ type: 'openApp', app: 'music' })
@@ -140,7 +200,8 @@ function AppleMusicWidget({ appleMusic }: { appleMusic: NonNullable<ReturnType<t
   )
 }
 
-/** YouTube Music's music: what plays, its controls, opening YouTube Music on Now Playing. */
+/** YouTube Music's music: what plays, its controls, opening YouTube Music on Now Playing. (Its words come
+ * without times, so the card keeps its title and artist there.) */
 function YouTubeMusicWidget({ youtubeMusic }: { youtubeMusic: NonNullable<ReturnType<typeof useYouTubeMusicSource>> }) {
   return (
     <MusicWidget
@@ -180,10 +241,23 @@ function PlayerWidget({ player }: { player: NonNullable<ReturnType<typeof usePla
 
 /** The Spotify app's music: what Spotify plays, its controls, opening the Spotify app on Now Playing. */
 function SpotifyWidget({ spotify }: { spotify: NonNullable<ReturnType<typeof useSpotifySource>> }) {
+  const playback = useSpotify((state) => state.playback)
+  const track = currentSpotifyTrack(playback)
+  const asked = useAskedSpotify(track ? { ask: 'lyrics', uri: track.uri } : null)
+  const now = useNowSpotify(playback?.playing ?? false)
   return (
     <MusicWidget
       source={spotify.source}
       artwork={spotify.artwork}
+      lyrics={
+        track
+          ? {
+              id: track.uri,
+              lyrics: asked.answer ?? null,
+              position: playback ? positionOfSpotify(playback, now) : 0,
+            }
+          : null
+      }
       onOpen={() => {
         useSpotify.setState({ nowPlaying: true })
         go({ type: 'openApp', app: 'spotify' })
@@ -204,6 +278,10 @@ const WIDGET_BACKDROPS: Record<Look, Backdrop> = {
   light: { cover: 0.55, rest: [248, 248, 250] },
 }
 
+/** Which song (and whether it plays) the widget's title shows before its words, and when the words take over:
+ * kept across the widget's comings and goings (another page, back to the Dashboard: the words stay). */
+let wordsWait = { key: '', until: 0 }
+
 /**
  * Now Playing's music: a source's track, tinted by its album art (a blurred copy behind the glass). Track
  * changes animate (the new cover waited for, the text sliding, cover and tint crossfading). The track opens
@@ -213,11 +291,14 @@ const WIDGET_BACKDROPS: Record<Look, Backdrop> = {
 function MusicWidget({
   source,
   artwork,
+  lyrics,
   onOpen,
   onControl,
 }: {
   source: MediaSource | null
   artwork: string | null
+  /** The song's words, where the screen has them: shown in the title's place three seconds into a song. */
+  lyrics?: { id: string; lyrics: Lyrics | null; position: number } | null
   onOpen?(): void
   onControl(action: MediaAction): void
 }) {
@@ -228,9 +309,32 @@ function MusicWidget({
   const playing = source?.status === 'playing'
   const text = useText()
   const ink = useWordsOver(cover, useLook().appearance, WIDGET_BACKDROPS)
+  // A song's title and artist three seconds; then its words (each line changing the way digits pop in). A new
+  // song, or playing or pausing, starts the three again; coming back to the widget keeps what it showed.
+  const song = lyrics?.id ?? null
+  const wordsKey = song ? `${song}:${playing ? 'playing' : 'paused'}` : ''
+  const [wordsUp, setWordsUp] = useState(() => wordsWait.key === wordsKey && performance.now() >= wordsWait.until)
+  useEffect(() => {
+    if (!wordsKey) {
+      wordsWait = { key: '', until: 0 }
+      setWordsUp(false)
+      return
+    }
+    if (wordsWait.key !== wordsKey) wordsWait = { key: wordsKey, until: performance.now() + 3000 }
+    const left = wordsWait.until - performance.now()
+    if (left <= 0) {
+      setWordsUp(true)
+      return
+    }
+    setWordsUp(false)
+    const timer = setTimeout(() => setWordsUp(true), left)
+    return () => clearTimeout(timer)
+  }, [wordsKey])
+  const showLyrics =
+    wordsUp && lyrics?.lyrics && lyrics.lyrics.lines.length > 0 ? lyrics : null
 
   return (
-    <article className={`widget glass now-playing ${wordsClass(ink)}`}>
+    <article className={`widget glass lg-system now-playing ${wordsClass(ink)}`}>
       <Crossfade value={cover} className="np-tint" render={(url) => url && <img src={url} alt="" aria-hidden />} />
       <button type="button" className="np-top" onClick={onOpen} disabled={!onOpen}>
         <Crossfade
@@ -246,17 +350,21 @@ function MusicWidget({
             )
           }
         />
-        <TrackSlide
-          transition={transition}
-          className="track"
-          layerClassName="track-lines"
-          render={(track) => (
-            <>
-              <span className="title">{track?.source.title ?? text.notPlaying}</span>
-              {track && <span className="artist">{track.source.artist}</span>}
-            </>
-          )}
-        />
+        {showLyrics ? (
+          <WidgetLyrics lyrics={showLyrics.lyrics!} position={showLyrics.position} />
+        ) : (
+          <TrackSlide
+            transition={transition}
+            className="track"
+            layerClassName="track-lines"
+            render={(track) => (
+              <>
+                <span className="title">{track?.source.title ?? text.notPlaying}</span>
+                {track && <span className="artist">{track.source.artist}</span>}
+              </>
+            )}
+          />
+        )}
       </button>
       <div className="controls">
         <button
@@ -283,6 +391,57 @@ function MusicWidget({
   )
 }
 
+/** How long a line takes to go before the next comes in (transitions.dev's text states swap's `--duration-quick`). */
+const LINE_SWAP = 150
+
+/**
+ * A song's words in the title's place, a line wrapping when long, changed the way transitions.dev's text
+ * states swap does it: the line sung slides up, blurs and fades; then the next is set below, blurred, and
+ * slides up into place and clears. Only the words: a translation is left out.
+ */
+function WidgetLyrics({ lyrics, position }: { lyrics: Lyrics; position: number }) {
+  const index = lyrics.synced ? Math.max(0, lineAt(lyrics.lines, position)) : 0
+  const wanted = lyrics.lines[index]?.text ?? ''
+  const [text, setText] = useState(wanted)
+  const [phase, setPhase] = useState<'idle' | 'exit' | 'enter-start'>('idle')
+  const line = useRef<HTMLSpanElement>(null)
+
+  // The line's change, in the swap's three steps: it leaves, it's replaced below, then it comes in.
+  useEffect(() => {
+    if (wanted === text) return
+    setPhase('exit')
+    const timer = setTimeout(() => {
+      setText(wanted)
+      setPhase('enter-start')
+    }, LINE_SWAP)
+    return () => clearTimeout(timer)
+  }, [wanted, text])
+
+  // The line set where it starts, without a transition: the browser takes that as its place, then it comes in.
+  useEffect(() => {
+    if (phase !== 'enter-start') return
+    const node = line.current
+    if (!node) {
+      setPhase('idle')
+      return
+    }
+    void node.offsetHeight
+    const frame = requestAnimationFrame(() => setPhase('idle'))
+    return () => cancelAnimationFrame(frame)
+  }, [phase])
+
+  return (
+    <span className="track np-words">
+      <span
+        ref={line}
+        className={`np-line${phase === 'exit' ? ' is-exit' : ''}${phase === 'enter-start' ? ' is-enter-start' : ''}`}
+      >
+        {text}
+      </span>
+    </span>
+  )
+}
+
 /**
  * Where the truck is headed, our "live activity" (destination.ts): the job's pickup and then its delivery
  * (deadline and distance left), or where the game's route ends; folded away without either, as the
@@ -294,7 +453,7 @@ export function DestinationWidget() {
   return (
     <div className={`widget-slot${shown ? ' open' : ''}`}>
       {shown && (
-        <article className="widget glass job">
+        <article className="widget glass lg-system job">
           <div className="kicker">{view.kicker}</div>
           <div className="destination">{view.title}</div>
           {view.subtitle && <div className="place">{view.subtitle}</div>}
@@ -332,7 +491,10 @@ export function WeatherWidget() {
   return (
     <div className={`widget-slot${room && view ? ' open' : ''}`}>
       {view && (
-        <article className="widget glass weather" aria-label={[view.place, view.condition].filter(Boolean).join(', ')}>
+        <article
+          className="widget glass lg-system weather"
+          aria-label={[view.place, view.condition].filter(Boolean).join(', ')}
+        >
           <div className="weather-text">
             {view.place && <div className="place">{view.place}</div>}
             <div className="condition">{view.condition}</div>

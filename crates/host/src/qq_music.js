@@ -70,6 +70,18 @@
     String(value ?? "")
       .replace(/\s+/g, " ")
       .trim();
+  /** The site's lyrics come base64 (the words, and their translation): the text it stands for. */
+  const base64Text = (value) => {
+    if (!value) return "";
+    try {
+      const binary = atob(String(value));
+      return new TextDecoder().decode(
+        Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+      );
+    } catch {
+      return String(value);
+    }
+  };
   const one = (selector, root = document) =>
     root?.querySelector(selector) ?? null;
   const all = (selector, root = document) => [
@@ -928,11 +940,52 @@
       tracks: await enrichTracks(rows, 8),
     };
   };
-  const artistAnswer = async (id) => {
+  /** The artist's own words, from the site's homepage tab (`wiki`): its paragraphs' text. */
+  const artistBio = async (artistId) => {
+    try {
+      const request = await requestApi();
+      const [data] = await within(
+        request([
+          {
+            module: "music.UnifiedHomepage.UnifiedHomepageSrv",
+            method: "GetHomepageTabDetail",
+            param: {
+              SingerMid: artistId,
+              IsQueryTabDetail: 1,
+              TabID: "wiki",
+              PageNum: 0,
+              PageSize: 10,
+              Order: 0,
+            },
+          },
+        ]),
+        15000,
+        "QQ Music artist bio timed out",
+      );
+      const paragraphs = data?.data?.IntroductionTab?.List ?? [];
+      const text = paragraphs
+        .map((each) => String(each?.Content ?? each?.content ?? each?.Text ?? each?.text ?? "").trim())
+        .filter(Boolean)
+        .join("\n\n");
+      log(`artist ${artistId} wiki: ${paragraphs.length} paragraphs, ${text.length} chars`);
+      return text;
+    } catch (error) {
+      log(`artist ${artistId} wiki: ${error}`);
+      return "";
+    }
+  };
+  /** An artist's page: their top songs and albums from the site's own APIs (its page shows ten songs, and
+   * draws the rest only in its player), and their own words from its wiki tab. */
+  const artistAnswer = async (id, page = 1) => {
     const artistId = String(id).split(":").slice(2).join(":");
     if (!artistId) return null;
+    const at = Math.max(1, Number(page) || 1);
     const doc = await fetchDoc(`${ORIGIN}/n/ryqq_v2/singer/${artistId}`);
     const node = nodeOf(doc, "MusicGroup");
+    // Their own words are the page's own data (whole, unlike its meta description): the wiki tab's when the
+    // page has none.
+    const own = initialData(doc)?.singerDetail;
+    const words = String(own?.shortdesc ?? "").trim();
     const item = {
       id: `qq:artist:${artistId}`,
       kind: "artist",
@@ -940,7 +993,7 @@
         node?.name ?? one("h1, .singer__title", doc)?.textContent ?? "QQ Music",
       ),
       by: "",
-      note: norm(node?.description),
+      note: "",
       image: node?.image
         ? new URL(node.image, location.href).href
         : DEFAULT_IMAGE,
@@ -949,11 +1002,52 @@
       explicit: false,
       live: false,
     };
-    return {
-      item,
-      top: await enrichTracks(tracks(doc).slice(0, 20)),
-      sections: [],
-    };
+    if (at === 1) item.note = words || (await artistBio(artistId)) || norm(node?.description);
+    if (at === 1) log(`artist ${artistId} bio: ${item.note.length} chars`);
+    const request = await requestApi();
+    const requests = [
+      {
+        module: "musichall.song_list_server",
+        method: "GetSingerSongList",
+        param: { singerMid: artistId, order: 1, number: 30, begin: (at - 1) * 30 },
+      },
+    ];
+    if (at === 1)
+      requests.push({
+        module: "music.musichallAlbum.AlbumListServer",
+        method: "GetAlbumList",
+        param: { singerMid: artistId, order: 1, number: 30, begin: 0 },
+      });
+    const answers = await within(request(requests), 20000, "QQ Music artist timed out");
+    const songs = (answers?.[0]?.data?.songList ?? [])
+      .map((each) => trackFromApi(each?.songInfo ?? each))
+      .filter(Boolean);
+    // Its albums, every page of them (the client lists all of them: forty-three for 周杰伦, not one page).
+    const albumRows = [...(answers?.[1]?.data?.albumList ?? [])];
+    if (at === 1) {
+      const total = Number(answers?.[1]?.data?.total) || 0;
+      let begin = albumRows.length;
+      for (let page = 0; page < 10 && begin > 0 && (total > 0 ? begin < total : albumRows.length >= 30); page++) {
+        const [data] = await within(
+          request([
+            {
+              module: "music.musichallAlbum.AlbumListServer",
+              method: "GetAlbumList",
+              param: { singerMid: artistId, order: 1, number: 30, begin },
+            },
+          ]),
+          20000,
+          "QQ Music albums timed out",
+        );
+        const list = data?.data?.albumList ?? [];
+        if (list.length === 0) break;
+        albumRows.push(...list);
+        begin += list.length;
+      }
+    }
+    const albums = albumRows.map(albumFromApi).filter(Boolean);
+    log(`artist ${artistId} p${at}: ${songs.length} songs, ${albums.length} albums`);
+    return { item, top: songs, albums, sections: [] };
   };
   const curatorAnswer = async (id) => {
     const label = decodeURIComponent(String(id).replace(/^qq:radio:/, ""));
@@ -984,11 +1078,80 @@
       return null;
     }
   };
+  /** A singer of the search's, as its card: its picture's own address when it gives none. */
+  const artistFromApi = (singer) => {
+    const mid = String(
+      singer?.mid ?? singer?.singermid ?? singer?.singerMID ?? singer?.singerMid ?? "",
+    );
+    const name = norm(
+      singer?.name ?? singer?.title ?? singer?.singername ?? singer?.singerName,
+    );
+    if (!mid || !name) return null;
+    return {
+      id: `qq:artist:${mid}`,
+      kind: "artist",
+      name,
+      by: "",
+      note: "",
+      image: imageUrl(
+        singer?.pic ??
+          singer?.singerPic ??
+          singer?.avatar ??
+          `//y.qq.com/music/photo_new/T001R300x300M000${mid}.jpg?max_age=2592000`,
+      ),
+      wide: null,
+      color: COLOR,
+      explicit: false,
+      live: false,
+    };
+  };
+  /** An album of the search's, as its card. */
+  const albumFromApi = (album) => {
+    const mid = String(
+      album?.albumMID ??
+        album?.albumMid ??
+        album?.albummid ??
+        album?.mid ??
+        album?.pmid ??
+        "",
+    );
+    const name = norm(
+      album?.albumName ?? album?.albumname ?? album?.name ?? album?.title,
+    );
+    if (!mid || !name) return null;
+    const singers = Array.isArray(album?.singer)
+      ? album.singer.map((each) => each?.name).filter(Boolean)
+      : [];
+    return {
+      id: `qq:album:${mid}`,
+      kind: "album",
+      name,
+      by: norm(
+        album?.singerName ?? album?.singername ?? singers.join(" / "),
+      ),
+      note: "",
+      image: imageUrl(
+        album?.albumPic ??
+          album?.pic ??
+          `//y.qq.com/music/photo_new/T002R300x300M000${mid}.jpg?max_age=2592000`,
+      ),
+      wide: null,
+      color: COLOR,
+      explicit: false,
+      live: false,
+    };
+  };
   const playlistFromApi = (playlist) => {
     const id =
-      playlist?.dissid ?? playlist?.dirid ?? playlist?.tid ?? playlist?.id;
+      playlist?.dissid ??
+      playlist?.disstid ??
+      playlist?.dirid ??
+      playlist?.tid ??
+      playlist?.id ??
+      playlist?.content_id;
     const name = norm(
       playlist?.dissname ??
+        playlist?.diss_name ??
         playlist?.dirname ??
         playlist?.title ??
         playlist?.name,
@@ -1218,73 +1381,140 @@
       }
     }
     if (!mid) return { synced: false, lines: [] };
-    const url =
-      `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${encodeURIComponent(mid)}` +
-      "&format=json&nobase64=1&g_tk=5381";
-    const response = await fetch(url, {
-      credentials: "include",
-      referer: `${ORIGIN}/`,
+    // The words and the site's own translation of them (bilingual songs have one), from its lyric API.
+    const request = await requestApi();
+    const [answer] = await within(
+      request([
+        {
+          module: "music.musichallSong.PlayLyricInfo",
+          method: "GetPlayLyricInfo",
+          param: {
+            songMID: mid,
+            songID: 0,
+            trans: 1,
+            crypt: 0,
+            lrc_t: 0,
+            qrc: 0,
+            qrc_t: 0,
+            roma: 0,
+            roma_t: 0,
+          },
+        },
+      ]),
+      15000,
+      "QQ Music lyrics timed out",
+    );
+    const payload = answer?.data ?? {};
+    const text = base64Text(payload.lyric);
+    const translation = base64Text(payload.trans);
+    const timedWords = (raw) => {
+      const found = [];
+      for (const row of raw.split(/\r?\n/)) {
+        const stamps = [...row.matchAll(/\[(\d{1,3}):(\d{2}(?:\.\d+)?)\]/g)];
+        if (!stamps.length) continue;
+        const words = norm(row.replace(/\[[^\]]+\]/g, ""));
+        if (!words) continue;
+        for (const stamp of stamps)
+          found.push({
+            start: Number(stamp[1]) * 60 + Number(stamp[2]),
+            text: words,
+          });
+      }
+      found.sort((a, b) => a.start - b.start);
+      return found;
+    };
+    const timed = timedWords(text);
+    // The site marks a line it has no translation for with slashes ("//"): it has none.
+    const translated = new Map(
+      timedWords(translation)
+        .filter((line) => !/^[\/\s]+$/.test(line.text))
+        .map((line) => [Math.round(line.start * 10), line.text]),
+    );
+    log(`lyrics ${mid}: ${timed.length} lines, ${translated.size} translated`);
+    const lines = timed.map((line, index) => {
+      const words = translated.get(Math.round(line.start * 10));
+      return {
+        start: line.start,
+        end: timed[index + 1]?.start ?? 0,
+        text: line.text,
+        ...(words ? { translation: words } : {}),
+      };
     });
-    if (!response.ok) throw new Error(`lyrics http ${response.status}`);
-    const data = await response.json();
-    let text = String(data?.lyric ?? "");
-    if (!text && data?.lyric && !data?.retcode) {
-      try {
-        text = atob(data.lyric);
-      } catch {}
-    }
-    const timed = [];
-    for (const raw of text.split(/\r?\n/)) {
-      const stamps = [...raw.matchAll(/\[(\d{1,3}):(\d{2}(?:\.\d+)?)\]/g)];
-      if (!stamps.length) continue;
-      const line = norm(raw.replace(/\[[^\]]+\]/g, ""));
-      if (!line) continue;
-      for (const stamp of stamps)
-        timed.push({
-          start: Number(stamp[1]) * 60 + Number(stamp[2]),
-          text: line,
-        });
-    }
-    timed.sort((a, b) => a.start - b.start);
-    const lines = timed.map((line, index) => ({
-      start: line.start,
-      end: timed[index + 1]?.start ?? 0,
-      text: line.text,
-    }));
+    const plain = text.split(/\r?\n/).map((line) => norm(line)).filter(Boolean);
+    const plainTranslation = translation
+      .split(/\r?\n/)
+      .map((line) => norm(line))
+      .filter((line) => line && !line.startsWith("[") && !/^[\/\s]+$/.test(line));
     return {
       synced: lines.length > 0,
       lines: lines.length
         ? lines
-        : text
-            .split(/\r?\n/)
-            .map((line) => norm(line))
-            .filter(Boolean)
-            .map((line) => ({ start: 0, end: 0, text: line }))
-            .slice(0, 300),
+        : plain
+            .slice(0, 300)
+            .map((line, index) => ({
+              start: 0,
+              end: 0,
+              text: line,
+              ...(plainTranslation[index] ? { translation: plainTranslation[index] } : {}),
+            })),
       provider: "QQ音乐",
       writers: [],
       rtl: false,
     };
   };
-  const searchAnswer = async (query) => {
-    const url = `${ORIGIN}/n/ryqq_v2/search?w=${encodeURIComponent(query)}&t=song`;
-    if (
-      !location.pathname.includes("/search") ||
-      new URLSearchParams(location.search).get("w") !== query
-    ) {
-      navigate(url);
-      return null;
-    }
-    for (let i = 0; i < 24 && tracks().length === 0; i++) await sleep(250);
-    const songs = await enrichTracks(tracks().slice(0, 40));
-    return {
-      top: [],
-      songs,
-      artists: [],
-      albums: [],
-      playlists: [],
-      stations: [],
-    };
+  /** The search's groups: its body's key, the app's name for it, the site's `remoteplace`, the `search_type`s
+   * tried for it (the site's own for the group first; a group the first answers nothing for is tried with the
+   * others, and the first that answers is taken). */
+  const SEARCH_GROUPS = [
+    ["song", "songs", "txt.yqq.song", [0]],
+    ["singer", "artists", "txt.yqq.singer", [1]],
+    ["album", "albums", "txt.yqq.album", [2]],
+    ["songlist", "playlists", "txt.yqq.playlist", [5, 4, 3, 2]],
+  ];
+  const SEARCH_MOST = 20;
+  /** A search's page: every group's on the first (the app's page of them), or just `group`'s for the pages
+   * after it. What each try held is logged, so a group the site stops answering is visible. */
+  const searchAnswer = async (query, page = 1, group = null) => {
+    const wanted = SEARCH_GROUPS.filter(([, name]) => !group || name === group);
+    const tries = [];
+    for (const [key, name, remoteplace, types] of wanted)
+      for (const search_type of types) tries.push({ key, name, remoteplace, search_type });
+    const request = await requestApi();
+    const searchid = String(Date.now());
+    const response = await within(
+      request(
+        tries.map(({ remoteplace, search_type }) => ({
+          module: "music.search.SearchCgiService",
+          method: "DoSearchForQQMusicDesktop",
+          param: {
+            remoteplace,
+            searchid,
+            search_type,
+            query,
+            page_num: Math.max(1, Number(page) || 1),
+            num_per_page: SEARCH_MOST,
+          },
+        })),
+      ),
+      20000,
+      "QQ Music search timed out",
+    );
+    const found = { songs: [], artists: [], albums: [], playlists: [] };
+    tries.forEach(({ key, name, search_type }, index) => {
+      const list = response?.[index]?.data?.body?.[key]?.list ?? [];
+      const rows =
+        name === "songs"
+          ? list.map(trackFromApi).filter(Boolean)
+          : name === "artists"
+            ? list.map(artistFromApi).filter(Boolean)
+            : name === "albums"
+              ? list.map(albumFromApi).filter(Boolean)
+              : list.map(playlistFromApi).filter(Boolean);
+      log(`search ${JSON.stringify(query)} p${Math.max(1, Number(page) || 1)} ${name} type${search_type}: ${list.length} raw, ${rows.length} kept`);
+      if (list.length > 0) log(`search ${name} fields: ${Object.keys(list[0]).join(",")}`);
+      if (rows.length > 0 && found[name].length === 0) found[name] = rows;
+    });
+    return { top: [], ...found, stations: [] };
   };
   const inFlight = new Set();
   const ask = async (id, question) => {
@@ -1319,13 +1549,13 @@
           answer = [];
           break;
         case "search":
-          answer = await searchAnswer(question.query);
+          answer = await searchAnswer(question.query, question.page, question.group);
           break;
         case "collection":
           answer = await collectionAnswer(question.id);
           break;
         case "artist":
-          answer = await artistAnswer(question.id);
+          answer = await artistAnswer(question.id, question.page);
           break;
         case "curator":
           answer = await curatorAnswer(question.id);
@@ -2129,7 +2359,15 @@
         // A card pressed: a song plays on its own; a collection the app already shows a list of travels with it.
         const parts = String(data.id ?? "").split(":");
         const mid = parts.slice(2).join(":");
-        if ((parts[0] === "track" || parts[0] === "song") && mid) {
+        if ((parts[1] === "track" || parts[1] === "song") && mid) {
+          // A song picked in Search (`insert`): it plays now, before the queue's own next song, and the queue
+          // carries on after it; the app keeps showing that queue, so nothing of it is replaced.
+          if (data.insert && queue.ids.length > 0) {
+            await tracksOf([mid]);
+            queue.ids.splice(queue.index + 1, 0, mid);
+            queue.index += 1;
+            return playCurrent();
+          }
           return setQueue({ ids: [mid], index: 0, context: null, shuffle: data.shuffle });
         }
         // A station: its first batch from the radio API, then a queue that grows as it plays.

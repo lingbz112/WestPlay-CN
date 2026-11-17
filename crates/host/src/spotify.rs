@@ -756,7 +756,10 @@ mod tests {
         assert!(
             !is_track("spotify:track:4cOdK2wGLETKBW3PvgPWqT/../x") && !is_track("spotify:album:4cOdK2wGLETKBW3PvgPWqT")
         );
-        let ask = Command::Ask { id: 9, question: Question::Search { query: "tarkan".into() } };
+        let ask = Command::Ask {
+            id: 9,
+            question: Question::Search { query: "tarkan".into() },
+        };
         assert_eq!(
             serde_json::to_string(&ask).unwrap(),
             r#"{"action":"ask","id":9,"question":{"ask":"search","query":"tarkan"}}"#
@@ -879,7 +882,9 @@ mod tests {
         // Spotify's page asked before it's ready answers once it is.
         std::thread::sleep(std::time::Duration::from_secs(1));
         let search =
-            ask(1, Question::Search { query: "tarkan".into() }).and_then(|answer| answer.search).expect("a search");
+            ask(1, Question::Search { query: "tarkan".into() })
+                .and_then(|answer| answer.search)
+                .expect("a search");
         let uris: Vec<String> = search.tracks.iter().take(4).map(|track| track.uri.clone()).collect();
         let mut with_words = 0;
         for (n, uri) in uris.iter().enumerate() {
@@ -993,7 +998,12 @@ mod tests {
             .unwrap();
         // An album, from a search's first song.
         let query = std::env::var("WESTPLAY_SPOTIFY_QUERY").unwrap_or_else(|_| "tarkan".into());
-        spotify.command(&Command::Ask { id: 1, question: Question::Search { query } }).unwrap();
+        spotify
+            .command(&Command::Ask {
+                id: 1,
+                question: Question::Search { query },
+            })
+            .unwrap();
         let mut song = None;
         let until = std::time::Instant::now() + std::time::Duration::from_secs(40);
         while song.is_none() && std::time::Instant::now() < until {
@@ -1114,7 +1124,12 @@ mod tests {
             )
             .unwrap();
         let query = std::env::var("WESTPLAY_SPOTIFY_QUERY").unwrap_or_else(|_| "tarkan".into());
-        spotify.command(&Command::Ask { id: 1, question: Question::Search { query } }).unwrap();
+        spotify
+            .command(&Command::Ask {
+                id: 1,
+                question: Question::Search { query },
+            })
+            .unwrap();
         let mut song = None;
         let until = Instant::now() + Duration::from_secs(40);
         while song.is_none() && Instant::now() < until {

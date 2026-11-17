@@ -11,6 +11,9 @@ pub struct Line {
     #[serde(default)]
     pub end: f64,
     pub text: String,
+    /// The same line in another language (QQ Music's own translation of it), where the service has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub translation: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stanza: bool,
 }
@@ -61,6 +64,11 @@ impl Lyrics {
         self.lines.truncate(MOST_LINES);
         for line in &mut self.lines {
             line.text = cut(&line.text, MOST_TEXT);
+            line.translation = line
+                .translation
+                .take()
+                .map(|translation| cut(&translation, MOST_TEXT))
+                .filter(|translation| !translation.trim().is_empty());
         }
         let timed = |time: f64| time.is_finite() && (0.0..=36_000.0).contains(&time);
         if !self.lines.iter().all(|line| timed(line.start) && timed(line.end)) {
@@ -103,7 +111,16 @@ mod tests {
         assert!(!odd.synced && odd.lines[0].start == 0.0 && odd.colors.is_none());
         // So many lines, so long.
         let long = Lyrics {
-            lines: vec![Line { start: 0.0, end: 0.0, text: "a".repeat(1000), stanza: false }; 900],
+            lines: vec![
+                Line {
+                    start: 0.0,
+                    end: 0.0,
+                    text: "a".repeat(1000),
+                    translation: None,
+                    stanza: false,
+                };
+                900
+            ],
             ..Default::default()
         }
         .checked();

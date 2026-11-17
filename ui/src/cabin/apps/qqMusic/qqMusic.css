@@ -764,6 +764,19 @@
   border-bottom: 0;
 }
 
+/* A search's group: six results, three across and two down, the page scrolling down rather than the row
+   across (its title row opens all of them). */
+.shell .am-search-group .am-shelf {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  grid-auto-columns: auto;
+  column-gap: 28px;
+  margin-inline: 0;
+  padding-inline: 0;
+  overflow: hidden;
+}
+
 /* Apple Music's bars: four, bouncing while it plays. */
 .shell .am-bars {
   display: flex;
@@ -986,6 +999,38 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #fff;
+}
+
+/* The artist's groups, under the picture: its songs, its albums, its own words. */
+.shell .am-artist-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.shell .am-artist-tabs button {
+  padding: 9px 22px;
+  border-radius: 999px;
+  background: var(--am-fill);
+  color: var(--am-label);
+  font-size: var(--am-type-sub);
+  font-weight: 600;
+}
+
+.shell .am-artist-tabs button.on {
+  background: var(--am-key-fill);
+  color: var(--am-key);
+}
+
+.shell .am-artist-bio {
+  margin: 0;
+  padding-bottom: 24px;
+  white-space: pre-wrap;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: calc(22px * var(--text-scale, 1));
+  line-height: 1.6;
+  color: var(--am-label);
 }
 
 .shell .am-play-round {
@@ -1779,6 +1824,16 @@
   color: var(--text);
   opacity: 0.3;
   transition: opacity 0.45s ease;
+}
+
+/* The line's own translation (QQ Music's), under it: the same size, a little lighter. */
+.shell .am-lyrics .lyric .lyric-translation {
+  display: block;
+  margin-top: 4px;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0.78;
 }
 
 .shell .am-lyrics .lyric.now,

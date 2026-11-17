@@ -284,6 +284,8 @@ export interface Strings {
     noResults: string
     noResultsHint: string
     seeAll: string
+    /** An artist's own words about them, the page's third group (QQ Music's). */
+    bio?: string
     recentlyPlayed: string
     recentlyAdded: string
     kinds: {
@@ -448,6 +450,8 @@ export interface Strings {
     vehicleBar: string
     vehicleBarFooter: string
     textSize: string
+    /** Every glass surface flat and solid (iOS's Accessibility one). */
+    reduceTransparency: string
     brightness: string
     /** Text Size's own text, shown at the size chosen (iOS's). */
     textSizeAbout: string

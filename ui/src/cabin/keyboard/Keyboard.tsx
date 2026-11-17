@@ -86,7 +86,7 @@ export function Keyboard() {
   return (
     <div
       ref={panel}
-      className={`keyboard ${keys.layer}${field ? ' shown' : ''}`}
+      className={`keyboard glass ${keys.layer}${field ? ' shown' : ''}`}
       style={style}
       aria-hidden={!field}
       inert={!field}

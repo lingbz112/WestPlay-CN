@@ -165,6 +165,12 @@ pub enum Question {
     },
     Search {
         query: String,
+        /// The page of the results (the search's own pages of them): the first when none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        page: Option<u32>,
+        /// One of the results' groups (a search's songs, artists, albums, playlists): all of them when none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group: Option<String>,
     },
     /// An album's or playlist's page.
     Collection {
@@ -172,6 +178,9 @@ pub enum Question {
     },
     Artist {
         id: String,
+        /// The page of its songs (the site's, thirty at a time): the first when none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        page: Option<u32>,
     },
     /// A list of the Library: sorted by `sort` (one of the sorts it said it has), a folder's (playlists), the
     /// sorts' names in `language` (the cab's: `en`, `tr`).
@@ -363,6 +372,9 @@ pub struct ArtistPage {
     pub top: Vec<Track>,
     #[serde(default)]
     pub sections: Vec<Section>,
+    /// Its albums, where the service answers them on its own.
+    #[serde(default)]
+    pub albums: Vec<Item>,
 }
 
 /// A search's results.
@@ -896,7 +908,10 @@ mod tests {
 
     #[test]
     fn passes_the_page_its_commands_as_the_app_sent_them() {
-        let ask = Command::Ask { id: 9, question: Question::Search { query: "tarkan".into() } };
+        let ask = Command::Ask {
+            id: 9,
+            question: Question::Search { query: "tarkan".into(), page: None, group: None },
+        };
         assert_eq!(
             serde_json::to_string(&ask).unwrap(),
             r#"{"action":"ask","id":9,"question":{"ask":"search","query":"tarkan"}}"#
@@ -1340,7 +1355,9 @@ mod tests {
             .and_then(|answer| answer.library)
             .expect("the Library's songs");
         let search =
-            ask(2, Question::Search { query: "tarkan".into() }).and_then(|answer| answer.search).expect("a search");
+            ask(2, Question::Search { query: "tarkan".into(), page: None, group: None })
+                .and_then(|answer| answer.search)
+                .expect("a search");
         let ids: Vec<String> =
             library.songs.iter().take(3).chain(search.songs.iter().take(2)).map(|song| song.id.clone()).collect();
         let mut with_words = 0;

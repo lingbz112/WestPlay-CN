@@ -53,12 +53,17 @@ export type Repeat = AppleMusicRepeat
 export type Tab = 'home' | 'new' | 'radio' | 'library' | 'search'
 export const TABS: readonly Tab[] = ['home', 'new', 'radio', 'library', 'search']
 
+/** The groups a search answers with (the site's search API), in the order its page shows them. */
+export type SearchGroup = 'songs' | 'artists' | 'albums' | 'playlists'
+
 /** A page over a tab's own (the card pressed, to show at once while its page comes). */
 export type View =
   | { id: number; kind: 'collection'; item: AppleMusicItem }
   | { id: number; kind: 'artist'; item: AppleMusicItem }
   | { id: number; kind: 'curator'; item: AppleMusicItem }
   | { id: number; kind: 'results'; query: string }
+  /** One of a search's groups, opened from its title row: all of its results. */
+  | { id: number; kind: 'searchGroup'; query: string; group: SearchGroup }
   | { id: number; kind: 'library'; shelf: AppleMusicShelf; folder?: AppleMusicItem }
   /** A section's See All: all of it. */
   | { id: number; kind: 'section'; section: AppleMusicSection }
@@ -284,6 +289,11 @@ type Unidentified<T> = T extends unknown ? Omit<T, 'id'> : never
 export function openView(view: Unidentified<View>): void {
   const { tab, views } = useQqMusic.getState()
   useQqMusic.setState({ views: { ...views, [tab]: [...views[tab], { ...view, id: nextId++ } as View] } })
+}
+
+/** One of a search's groups: its title row pressed shows all of its results. */
+export function openSearchGroup(query: string, group: SearchGroup): void {
+  openView({ kind: 'searchGroup', query, group })
 }
 
 /** A card pressed: its page; a station or a song plays. */

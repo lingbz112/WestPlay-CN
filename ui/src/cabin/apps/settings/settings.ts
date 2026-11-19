@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** The Settings app's pages: its list, the page each row opens, and the pages within those (Appearance's Text
- * Size, Sound's Presets and Sound Settings, and the four pages within them). */
+ * Size, Sound's Presets and Equalizer). */
 export type SettingsPage =
   | 'list'
   | 'appearance'
@@ -11,11 +11,8 @@ export type SettingsPage =
   | 'nowPlaying'
   | 'sound'
   | 'presets'
-  | 'soundDetail'
+  | 'limiter'
   | 'equalizer'
-  | 'reverb'
-  | 'character'
-  | 'bass'
   | 'dateTime'
   | 'safari'
   | 'searchEngine'
@@ -25,11 +22,8 @@ export type SettingsPage =
 export const PARENT: Partial<Record<SettingsPage, SettingsPage>> = {
   textSize: 'appearance',
   presets: 'sound',
-  soundDetail: 'sound',
-  equalizer: 'soundDetail',
-  reverb: 'soundDetail',
-  character: 'soundDetail',
-  bass: 'soundDetail',
+  limiter: 'sound',
+  equalizer: 'sound',
   searchEngine: 'safari',
   clearHistory: 'safari',
 }

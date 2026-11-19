@@ -37,6 +37,70 @@ pub struct Speaker {
     pub delay: f32,
 }
 
+/// The cab as a room for sound: the closed box its speakers play in (cab space, metres). Its walls, floor and
+/// ceiling are what every reflection comes from, so a model that leaves some out (a missing floor, an open side
+/// window) still sounds like a cab: the box is the cab, not the model.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cabin {
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+    /// How much its surfaces soak up, on average (0..1): a cab of fabric, carpet and plastic more than one of
+    /// leather and glass.
+    pub absorption: f32,
+}
+
+impl Cabin {
+    /// What a cab soaks up on average: not its bare shell but what fills it -- fabric seats and their foam, the
+    /// carpet, the trim, the driver. A bare box rings; a furnished cab is soft and short.
+    pub const ABSORPTION: f32 = 0.42;
+
+    /// A cab's box from a model's own box (before the head's offset is added): `None` if the model's is not a
+    /// cab's -- a width, height or depth no cab has, or a depth a whole car's (the Road Trip DLC's pickups:
+    /// their interior model is the whole vehicle, engine bay and bed included).
+    pub fn from_model_box(lo: [f32; 3], hi: [f32; 3]) -> Option<Self> {
+        let (width, height, depth) = (hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]);
+        let cab = (1.6..=2.75).contains(&width) && (1.2..=2.9).contains(&height) && (1.5..=3.2).contains(&depth);
+        cab.then_some(Self { min: lo, max: hi, absorption: Self::ABSORPTION })
+    }
+
+    /// The box moved by `by` (a point of the model's space into cab space, as the head's default place is).
+    pub fn moved(self, by: [f32; 3]) -> Self {
+        Self { min: add(self.min, by), max: add(self.max, by), absorption: self.absorption }
+    }
+
+    /// A cab's box from its speakers' spread, for a truck the save hasn't got yet (its interior model unread):
+    /// a car's if they sit low and close together, a sleeper's otherwise.
+    pub fn from_speakers(speakers: &[Speaker]) -> Self {
+        let (low, high) = speakers.iter().fold((f32::MAX, f32::MIN), |(low, high), speaker| {
+            (low.min(speaker.at[1]), high.max(speaker.at[1]))
+        });
+        let (wide, deep, floor, roof) =
+            if high - low > 1.5 { (2.4, 2.2, -1.2, 1.0) } else { (1.9, 2.0, -1.1, 0.4) };
+        Self {
+            min: [-wide / 2.0, floor, -deep / 2.0],
+            max: [wide / 2.0, roof, deep / 2.0],
+            absorption: Self::ABSORPTION,
+        }
+    }
+
+    /// A cab whose box didn't read: a truck's day cab or sleeper's middle, by `wide` and `high` (metres).
+    pub fn fallback(wide: f32, high: f32) -> Self {
+        Self {
+            min: [-wide / 2.0, -1.2, -1.1],
+            max: [wide / 2.0, high - 1.2, 1.1],
+            absorption: Self::ABSORPTION,
+        }
+    }
+
+    /// Whether it is a cab's box: numbers, and each corner short of the cab's own size.
+    pub fn is_sound(&self) -> bool {
+        self.min.iter().chain(&self.max).all(|v| v.is_finite() && v.abs() < 8.0)
+            && self.min.iter().zip(&self.max).all(|(lo, hi)| lo < hi)
+            && (0.0..=1.0).contains(&self.absorption)
+    }
+}
+
 /// No limit that way (a band's).
 const OPEN: f32 = 0.0;
 
@@ -1324,7 +1388,7 @@ impl Head {
 /// The player's tone controls, as a car stereo's (the cab's Settings › Sound): how much of the bass, the mids and
 /// the treble, in dB each, [`Equalizer::MOST`] either way. One for every truck (owner 2026-10-22), on all the
 /// sound the players play, before it's split to the speakers (a truck whose speakers aren't known too).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Equalizer {
     pub bass: i8,
@@ -1342,6 +1406,20 @@ pub const GRAPHIC_BANDS: usize = 15;
 /// The graphic curve's lowest and highest bands, Hz: the ends of the 15, two-thirds of an octave apart.
 pub const GRAPHIC_LOWEST: f32 = 25.0;
 pub const GRAPHIC_HIGHEST: f32 = 16000.0;
+
+impl Default for Equalizer {
+    /// The cab's own curve, tuned in the truck (owner 2026-11-18): the lows lifted, a dip around 80 Hz, the
+    /// highs rising. Recommended plays it; Custom starts from it.
+    fn default() -> Self {
+        Self {
+            bass: 0,
+            mid: 0,
+            treble: 0,
+            advanced: true,
+            bands: [5, 2, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1, 3, 5, 7],
+        }
+    }
+}
 
 impl Equalizer {
     /// How far each band goes, dB (owner 2026-10-22: a car stereo's tone range).
@@ -1363,93 +1441,57 @@ impl Equalizer {
     }
 }
 
-/// The cabin's shared reverb: the reflections every player's sound makes in the truck's cab. `size` is the
-/// room's scale from a compact day cab (0) to a long sleeper (100); `amount` is how loud the reflections are.
-/// The sound field keeps the dry sound placed at each speaker and adds this as the cab's diffuse return.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct Reverb {
-    pub enabled: bool,
-    pub size: i8,
-    pub amount: i8,
+/// The low band's own limiter (Settings › Sound › Low Limiter), on 200 Hz and under alone (cab_sound.js): where
+/// it starts pulling peaks down and the level it holds them at, the most it sends on ever, how softly it comes
+/// in, how fast it works, and how far ahead of a peak it starts. Saved with WestPlay's settings and played by
+/// every player.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Limiter {
+    /// Where gain reduction starts, and the level the low band's peaks are held at, dB.
+    pub threshold: f32,
+    /// The most the low band sends on, dB: a hard cap, whenever that is under `threshold`.
+    pub ceiling: f32,
+    /// How far under `threshold` the reduction starts coming in, dB (0: at once).
+    pub knee: f32,
+    /// How fast it pulls a peak down, ms.
+    pub attack: f32,
+    /// How fast it lets go after one, ms.
+    pub release: f32,
+    /// How far ahead of a peak it starts working, ms.
+    pub lookahead: f32,
 }
 
-impl Reverb {
-    pub const MOST: i8 = 100;
-
-    pub fn clamped(self) -> Self {
-        let clamp = |value: i8| value.clamp(0, Self::MOST);
-        Self { enabled: self.enabled, size: clamp(self.size), amount: clamp(self.amount) }
-    }
-}
-
-impl Default for Reverb {
+impl Default for Limiter {
+    /// Gentle enough to stay out of the way: it comes in only where several low units would otherwise add up
+    /// past full (the bass that clips a truck fitted with more than one).
     fn default() -> Self {
-        Self { enabled: true, size: 55, amount: 32 }
+        Self {
+            threshold: 0.0,
+            ceiling: -3.5,
+            knee: 2.0,
+            attack: 11.5,
+            release: 250.0,
+            lookahead: 2.5,
+        }
     }
 }
 
-/// How much of the cabin model every player uses (Settings › Sound › Cabin Character).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum CabinCharacter {
-    /// The direct speaker field only.
-    Reference,
-    /// A conservative car-cabin transfer curve and gentle bus compression.
-    Equalized,
-    /// A short measured-style early-reflection response, without the long reverb.
-    Impulse,
-    /// The cabin curve and early reflections together; diffuse reverb remains independently controlled.
-    #[default]
-    Full,
-    /// Everything the cabin does off (Settings › Sound's EQ switch): the players play the truck's speakers as
-    /// they're placed and nothing else, with no tone, cabin, space or bass shaping at all. Not one of the four
-    /// steps the Character page offers: the switch, not a choice of character.
-    Off,
-}
-
-/// Strength of the cabin's discrete early reflections (`0`: none, `100`: the modelled level).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct CabinReflection {
-    pub amount: i8,
-}
-
-impl CabinReflection {
-    pub const MOST: i8 = 100;
-
+impl Limiter {
+    /// Each setting within its range, and nothing a file says in place of a number kept as one.
     pub fn clamped(self) -> Self {
-        Self { amount: self.amount.clamp(0, Self::MOST) }
-    }
-}
-
-impl Default for CabinReflection {
-    fn default() -> Self {
-        Self { amount: 100 }
-    }
-}
-
-/// Always-on bass management: the crossover below which the cabin sums both channels to mono before the
-/// directional speaker field. Real sub-bass carries little useful direction; keeping it out of HRTF avoids
-/// the whole low end moving with a turn of the head.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct BassManagement {
-    pub cutoff: u8,
-}
-
-impl BassManagement {
-    pub const LOW: u8 = 30;
-    pub const HIGH: u8 = 150;
-
-    pub fn clamped(self) -> Self {
-        Self { cutoff: self.cutoff.clamp(Self::LOW, Self::HIGH) }
-    }
-}
-
-impl Default for BassManagement {
-    fn default() -> Self {
-        Self { cutoff: 60 }
+        let default = Self::default();
+        let keep = |value: f32, fallback: f32, most: f32, least: f32| {
+            if value.is_finite() { value.clamp(least, most) } else { fallback }
+        };
+        Self {
+            threshold: keep(self.threshold, default.threshold, 0.0, -60.0),
+            ceiling: keep(self.ceiling, default.ceiling, 0.0, -60.0),
+            knee: keep(self.knee, default.knee, 24.0, 0.0),
+            attack: keep(self.attack, default.attack, 100.0, 0.1),
+            release: keep(self.release, default.release, 2000.0, 10.0),
+            lookahead: keep(self.lookahead, default.lookahead, 20.0, 0.0),
+        }
     }
 }
 
@@ -1674,25 +1716,26 @@ mod tests {
         assert_eq!(kept.bands, [Equalizer::GRAPHIC_MOST; GRAPHIC_BANDS]);
         let low = Equalizer { bands: [-40; GRAPHIC_BANDS], ..Default::default() };
         assert_eq!(low.clamped().bands, [-Equalizer::GRAPHIC_MOST; GRAPHIC_BANDS]);
-        // Not advanced by default (the three bands play), and its bands still flat.
-        assert!(!Equalizer::default().advanced);
-        assert_eq!(Equalizer::default().bands, [0; GRAPHIC_BANDS]);
+        // The cab's own curve by default (Advanced on, its bands as tuned in the truck).
+        assert!(Equalizer::default().advanced);
+        assert_eq!(Equalizer::default().bands, [5, 2, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1, 3, 5, 7]);
     }
 
     #[test]
-    fn cabin_reverb_uses_the_whole_room_and_level_range() {
-        let wild = Reverb { enabled: true, size: -20, amount: 120 };
-        assert_eq!(wild.clamped(), Reverb { enabled: true, size: 0, amount: 100 });
-        assert_eq!(Reverb::default().clamped(), Reverb::default());
-    }
-
-    #[test]
-    fn cabin_reflection_and_bass_management_keep_their_ranges() {
-        assert_eq!(CabinReflection { amount: 120 }.clamped(), CabinReflection { amount: 100 });
-        assert_eq!(CabinReflection { amount: -3 }.clamped(), CabinReflection { amount: 0 });
-        assert_eq!(BassManagement { cutoff: 10 }.clamped(), BassManagement { cutoff: 30 });
-        assert_eq!(BassManagement { cutoff: 200 }.clamped(), BassManagement { cutoff: 150 });
-        assert_eq!(BassManagement::default(), BassManagement { cutoff: 60 });
+    fn keeps_the_limiter_within_its_ranges() {
+        assert_eq!(Limiter::default().clamped(), Limiter::default());
+        let wild = Limiter {
+            threshold: 40.0,
+            ceiling: f32::NAN,
+            knee: -3.0,
+            attack: 0.0,
+            release: 1e9,
+            lookahead: 30.0,
+        };
+        assert_eq!(
+            wild.clamped(),
+            Limiter { threshold: 0.0, ceiling: -3.5, knee: 0.0, attack: 0.1, release: 2000.0, lookahead: 20.0 }
+        );
     }
 
     #[test]

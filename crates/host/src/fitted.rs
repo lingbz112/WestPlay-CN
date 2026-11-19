@@ -19,10 +19,11 @@ use std::path::{Path, PathBuf};
 use westplay_mapdata::archive::Archive;
 use westplay_mapdata::buildings::{self, Locator};
 use westplay_mapdata::files::{GameFiles, Mount};
+use westplay_mapdata::pmg::Pmg;
 use westplay_mapdata::sii::{self, Unit};
 use westplay_shared::TruckInfo;
 
-use crate::speakers::{self, Placed, Speaker};
+use crate::speakers::{self, Cabin, Placed, Speaker};
 
 /// One of the player's trucks as the save has it.
 #[derive(Clone, Debug, PartialEq)]
@@ -186,6 +187,19 @@ pub fn speakers(files: &GameFiles, truck: &SavedTruck, head: [f32; 3]) -> Result
         return Ok(None);
     }
     Ok(Some(Fitted { speakers: speakers::assemble(&placed), parts }))
+}
+
+/// The cab `truck`'s interior makes as a room: its model's box in cab space (`head`: the SDK's default head,
+/// where the model's origin is), if that box reads as a cab's (speakers.rs's [`Cabin::from_model_box`]).
+pub fn cabin(files: &GameFiles, truck: &SavedTruck, head: [f32; 3]) -> Option<Cabin> {
+    let interior = truck
+        .parts
+        .iter()
+        .find(|path| path.starts_with(&format!("/def/vehicle/truck/{}/interior/", truck.model)))?;
+    let model = definition(files, interior).ok()?.get("model")?.to_owned();
+    let pmg = files.read(&model.replace(".pmd", ".pmg")).ok()??;
+    let (lo, hi) = Pmg::read(&pmg)?.model_box()?;
+    Cabin::from_model_box(lo, hi).map(|cabin| cabin.moved(head))
 }
 
 /// A definition file's unit.

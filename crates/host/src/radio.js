@@ -165,19 +165,15 @@
   if (cab) setInterval(() => cab.tick(), 250);
 
   const CAB = {
-    speakers: (data) => cab?.speakers(data.speakers),
+    speakers: (data) => cab?.speakers(data.speakers, data.cabin),
     head: (data) => {
       headReady = true;
       cab?.head(data);
     },
     outside: (data) => cab?.outside(data.on, data.distance),
-    equalizer: (data) => {
-      cab?.equalizer(data);
-      cab?.reverb(data.reverb);
-      cab?.character(data.character);
-      cab?.reflection(data.reflection);
-      cab?.bass(data.bassManagement);
-    },
+    equalizer: (data) => cab?.equalizer(data),
+    reflections: (data) => cab?.reflections(data),
+    limiter: (data) => cab?.limiter(data),
     spectrum: (data) => cab?.spectrum(data.on),
   };
 

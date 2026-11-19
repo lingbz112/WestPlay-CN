@@ -36,15 +36,14 @@ import { type SettingsPage, useSettings } from './settings'
 import './settings.css'
 import {
   cabClock,
-  BASS_CUTOFF,
-  CABIN_CHARACTERS,
-  type CabinCharacter,
   EQUALIZER_BANDS,
   EQUALIZER_MOST,
   GRAPHIC_BANDS,
   GRAPHIC_FREQUENCIES,
   GRAPHIC_MOST,
   isInHost,
+  type Limiter,
+  LIMITER_RANGE,
   postToHost,
 } from '../../../shared/host'
 
@@ -86,16 +85,10 @@ function PageContent({ page }: { page: SettingsPage }) {
       return <SoundPage />
     case 'presets':
       return <PresetsPage />
-    case 'soundDetail':
-      return <SoundDetailPage />
+    case 'limiter':
+      return <LimiterPage />
     case 'equalizer':
       return <EqualizerPage />
-    case 'reverb':
-      return <ReverbPage />
-    case 'character':
-      return <CharacterPage />
-    case 'bass':
-      return <BassPage />
     case 'textSize':
       return <TextSizePage />
     case 'dateTime':
@@ -567,28 +560,28 @@ function NowPlayingPage() {
 }
 
 /**
- * The cab's sound: its EQ switch, then — while that's on — the preset playing and the settings that tune it.
+ * The cab's sound: its EQ switch, then — while that's on — the equalizer that tunes it.
  * Off, the switch is all there is to show: the players shape nothing, so the rest would say nothing.
  */
 function SoundPage() {
   const text = useText()
   const open = useSettings((state) => state.open)
-  const enabled = useCabin((state) => state.soundEnabled)
-  const setEnabled = useCabin((state) => state.setSoundEnabled)
-  const presets = useCabin((state) => state.presets)
-  const preset = useCabin((state) => state.preset)
-  const presetName = presets.find((each) => each.id === preset)?.name
+  const custom = useCabin((state) => state.equalizerCustom)
+  const limiter = useCabin((state) => state.limiter)
   return (
     <Page title={text.settings.sound}>
-      <Group footer={text.settings.eqFooter}>
-        <SwitchRow label={text.settings.eq} on={enabled} onToggle={setEnabled} />
+      <Group footer={text.settings.soundFooter}>
+        <NavRow
+          label={text.settings.equalizer}
+          value={custom ? text.settings.custom : text.settings.recommended}
+          onOpen={() => open('equalizer')}
+        />
+        <NavRow
+          label={text.settings.lowLimiter ?? 'Low Limiter'}
+          value={`${limiter.threshold} dB`}
+          onOpen={() => open('limiter')}
+        />
       </Group>
-      {enabled && (
-        <Group footer={text.settings.soundFooter}>
-          <NavRow label={text.settings.presets} value={presetName} onOpen={() => open('presets')} />
-          <NavRow label={text.settings.soundDetail} onOpen={() => open('soundDetail')} />
-        </Group>
-      )}
     </Page>
   )
 }
@@ -616,181 +609,49 @@ function PresetsPage() {
   )
 }
 
-/** The sound's own settings: the Equalizer, the cabin's character, its bass and its reverb. */
-function SoundDetailPage() {
+/** The low band's own limiter (200 Hz and under alone): where it starts, the most it sends on, how softly and
+ * how fast it works, and how far ahead of a peak it looks. */
+function LimiterPage() {
   const text = useText()
-  const open = useSettings((state) => state.open)
-  const custom = useCabin((state) => state.equalizerCustom)
-  const reverb = useCabin((state) => state.reverb)
-  const character = useCabin((state) => state.cabinCharacter)
-  const bass = useCabin((state) => state.bass)
-  const characterNames: Record<CabinCharacter, string> = {
-    reference: text.settings.characterReference,
-    equalized: text.settings.characterEq,
-    impulse: text.settings.characterIr,
-    full: text.settings.characterFull,
-  }
+  const limiter = useCabin((state) => state.limiter)
+  const setLimiter = useCabin((state) => state.setLimiter)
+  const rows: { name: keyof Limiter; label: string; unit: string }[] = [
+    { name: 'threshold', label: text.settings.limiterThreshold ?? 'Threshold', unit: ' dB' },
+    { name: 'ceiling', label: text.settings.limiterCeiling ?? 'Ceiling', unit: ' dB' },
+    { name: 'knee', label: text.settings.limiterKnee ?? 'Knee', unit: ' dB' },
+    { name: 'attack', label: text.settings.limiterAttack ?? 'Attack', unit: ' ms' },
+    { name: 'release', label: text.settings.limiterRelease ?? 'Release', unit: ' ms' },
+    { name: 'lookahead', label: text.settings.limiterLookahead ?? 'Lookahead', unit: ' ms' },
+  ]
   return (
-    <Page title={text.settings.soundDetail}>
-      <Group>
-        <NavRow
-          label={text.settings.equalizer}
-          value={custom ? text.settings.custom : text.settings.recommended}
-          onOpen={() => open('equalizer')}
-        />
-        <NavRow
-          label={text.settings.cabinCharacter}
-          value={characterNames[character]}
-          onOpen={() => open('character')}
-        />
-        <NavRow label={text.settings.bassManagement} value={`${bass.cutoff} Hz`} onOpen={() => open('bass')} />
-        <NavRow
-          label={text.settings.cabinReverb}
-          value={reverb.enabled ? `${reverb.amount}%` : text.settings.off}
-          onOpen={() => open('reverb')}
-        />
-      </Group>
-    </Page>
-  )
-}
-
-/** The four-step cabin A/B: direct speakers, cabin EQ, early reflections, then the full model. */
-function CharacterPage() {
-  const text = useText()
-  const chosen = useCabin((state) => state.cabinCharacter)
-  const choose = useCabin((state) => state.setCabinCharacter)
-  const reflection = useCabin((state) => state.reflection)
-  const setReflection = useCabin((state) => state.setReflection)
-  const names: Record<CabinCharacter, string> = {
-    reference: text.settings.characterReference,
-    equalized: text.settings.characterEq,
-    impulse: text.settings.characterIr,
-    full: text.settings.characterFull,
-  }
-  return (
-    <Page title={text.settings.cabinCharacter}>
-      <Group footer={text.settings.characterFooter}>
-        {CABIN_CHARACTERS.map((character) => (
-          <CheckRow
-            key={character}
-            label={names[character]}
-            on={chosen === character}
-            onPick={() => choose(character)}
-          />
+    <Page title={text.settings.lowLimiter ?? 'Low Limiter'}>
+      <Group footer={text.settings.lowLimiterFooter}>
+        {rows.map((row) => (
+          <label className="settings-slider-row" key={row.name}>
+            <span className="settings-slider-text">
+              <span className="settings-label">{row.label}</span>
+              <span className="settings-slider-value">
+                {limiter[row.name]}
+                {row.unit}
+              </span>
+            </span>
+            <input
+              type="range"
+              min={LIMITER_RANGE[row.name].least}
+              max={LIMITER_RANGE[row.name].most}
+              step={LIMITER_RANGE[row.name].step}
+              value={limiter[row.name]}
+              data-own-drag
+              onChange={(event) => {
+                const told: Partial<Limiter> = {}
+                told[row.name] = Number(event.currentTarget.value)
+                setLimiter(told)
+              }}
+            />
+          </label>
         ))}
       </Group>
-      <Group>
-        <SettingSlider
-          label={text.settings.reflectionAmount}
-          value={reflection.amount}
-          change={(amount) => setReflection({ amount })}
-        />
-      </Group>
     </Page>
-  )
-}
-
-/** Always-on bass management. There is no switch: only where the mono bass crossover sits. */
-function BassPage() {
-  const text = useText()
-  const bass = useCabin((state) => state.bass)
-  const set = useCabin((state) => state.setBass)
-  return (
-    <Page title={text.settings.bassManagement}>
-      <Group footer={text.settings.bassFooter}>
-        <SettingSlider
-          label={text.settings.bassCutoff}
-          value={bass.cutoff}
-          min={BASS_CUTOFF.min}
-          max={BASS_CUTOFF.max}
-          step={BASS_CUTOFF.step}
-          suffix=" Hz"
-          change={(cutoff) => set({ cutoff })}
-        />
-      </Group>
-    </Page>
-  )
-}
-
-/** The cab's shared acoustic space: first reflections and the diffuse tail every player's sound makes in the
- * same truck interior. Presets keep it quick; the sliders let a large sleeper or a compact day cab be tuned. */
-function ReverbPage() {
-  const text = useText()
-  const reverb = useCabin((state) => state.reverb)
-  const set = useCabin((state) => state.setReverb)
-  const presets = [
-    { id: 'compact', label: text.settings.compactCab, size: 25, amount: 30 },
-    { id: 'standard', label: text.settings.standardCab, size: 55, amount: 32 },
-    { id: 'large', label: text.settings.largeCab, size: 85, amount: 40 },
-  ] as const
-  const chosen = presets.find((preset) => preset.size === reverb.size && preset.amount === reverb.amount)
-  return (
-    <Page title={text.settings.cabinReverb}>
-      <Group footer={text.settings.reverbFooter}>
-        <SwitchRow label={text.settings.reverbEnabled} on={reverb.enabled} onToggle={(enabled) => set({ enabled })} />
-      </Group>
-      <Group header={text.settings.reverbPresets}>
-        {presets.map((preset) => (
-          <CheckRow
-            key={preset.id}
-            label={preset.label}
-            on={chosen?.id === preset.id}
-            onPick={() => set({ enabled: true, size: preset.size, amount: preset.amount })}
-          />
-        ))}
-      </Group>
-      <Group>
-        <SettingSlider
-          label={text.settings.reverbSize}
-          value={reverb.size}
-          change={(size) => set({ enabled: true, size })}
-        />
-        <SettingSlider
-          label={text.settings.reverbAmount}
-          value={reverb.amount}
-          change={(amount) => set({ enabled: true, amount })}
-        />
-      </Group>
-    </Page>
-  )
-}
-
-function SettingSlider({
-  label,
-  value,
-  min = 0,
-  max = 100,
-  step = 1,
-  suffix = '%',
-  change,
-}: {
-  label: string
-  value: number
-  min?: number
-  max?: number
-  step?: number
-  suffix?: string
-  change(value: number): void
-}) {
-  return (
-    <label className="settings-slider-row">
-      <span className="settings-slider-text">
-        <span className="settings-label">{label}</span>
-        <span className="settings-slider-value">
-          {value}
-          {suffix}
-        </span>
-      </span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        data-own-drag
-        onChange={(event) => change(Number(event.currentTarget.value))}
-      />
-    </label>
   )
 }
 

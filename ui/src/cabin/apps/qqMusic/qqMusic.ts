@@ -23,6 +23,7 @@ export { positionOf } from './time'
 export type {
   AppleMusicArtist,
   AppleMusicCollection,
+  AppleMusicDaily,
   AppleMusicItem,
   AppleMusicLibrary,
   AppleMusicPage,
@@ -129,6 +130,8 @@ interface QqMusicState {
   tab: Tab
   /** Each tab's pages over its own, the one showing last (each tab is kept where it was left). */
   views: Record<Tab, View[]>
+  /** How many times each tab was opened: a page shown again is asked afresh. */
+  visits: Record<Tab, number>
   /** Now Playing is open, over the app. */
   nowPlaying: boolean
   /** Now Playing shows Up Next in the cover's place. */
@@ -162,6 +165,7 @@ export const useQqMusic = create<QqMusicState>()(() => ({
   avatar: null,
   tab: 'home',
   views: NO_VIEWS,
+  visits: { home: 0, new: 0, radio: 0, library: 0, search: 0 },
   nowPlaying: false,
   queue: false,
   lyrics: false,
@@ -240,7 +244,8 @@ useQqMusic.subscribe((state, before) => {
       added: {},
       recent: [],
       views: NO_VIEWS,
-      tab: state.signedIn ? state.tab : state.tab === 'library' || state.tab === 'home' ? 'new' : state.tab,
+      // Signed out, the app is the ask to sign in alone: back at Home, where it shows.
+      tab: state.signedIn ? state.tab : 'home',
     })
   }
 })
@@ -279,9 +284,10 @@ let nextId = 1
 
 /** A tab: pressed again where it already is, back to its own page (Apple's way). */
 export function openTab(tab: Tab): void {
-  const { tab: was, views } = useQqMusic.getState()
-  if (was === tab) useQqMusic.setState({ views: { ...views, [tab]: [] } })
-  else useQqMusic.setState({ tab })
+  const { tab: was, views, visits } = useQqMusic.getState()
+  const counted = { ...visits, [tab]: visits[tab] + 1 }
+  if (was === tab) useQqMusic.setState({ views: { ...views, [tab]: [] }, visits: counted })
+  else useQqMusic.setState({ tab, visits: counted })
 }
 
 type Unidentified<T> = T extends unknown ? Omit<T, 'id'> : never

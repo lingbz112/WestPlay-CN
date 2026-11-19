@@ -121,14 +121,8 @@ export type HostMessage =
       /** The player's own tone curve (Settings › Equalizer), and whether it plays (Custom) or not (Recommended). */
       equalizer?: Equalizer
       equalizerCustom?: boolean
-      /** The cab's shared reverb (Settings › Sound › Cabin Reverb). */
-      reverb?: Reverb
-      /** How much cabin modelling every player uses (Settings › Sound › Cabin Character). */
-      character?: CabinCharacter
-      /** The strength of the fixed-direction cabin reflections. */
-      reflection?: CabinReflection
-      /** The always-on bass management's mono crossover. */
-      bass?: BassManagement
+      /** The low band's own limiter (Settings › Sound › Low Limiter), 200 Hz and under alone. */
+      limiter?: Limiter
       /** Whether the map's buildings rise from it. */
       buildings?: boolean
       /** Whether its roads rise to their real heights. */
@@ -401,17 +395,21 @@ export const GRAPHIC_FREQUENCIES: readonly number[] = Array.from(
   (_, i) => GRAPHIC_LOWEST * (GRAPHIC_HIGHEST / GRAPHIC_LOWEST) ** (i / (GRAPHIC_BANDS - 1)),
 )
 
+/** The cab's own curve, as tuned in the truck (owner 2026-11-18): what Recommended plays and a reset goes back
+ * to. The lows lifted, a dip around 80 Hz, the highs rising. */
 export const FLAT: Equalizer = {
   bass: 0,
   mid: 0,
   treble: 0,
-  advanced: false,
-  bands: new Array(GRAPHIC_BANDS).fill(0),
+  advanced: true,
+  bands: [5, 2, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1, 3, 5, 7],
 }
 
 /** The tone as the host may send it: each band a whole number of dB within the range (anything else flat). */
 export function toEqualizer(value: unknown): Equalizer {
-  const told = (value ?? {}) as Partial<Record<keyof Equalizer, unknown>>
+  // Nothing said: the cab's own curve, not a flat one (the host not sending it says nothing about the tone).
+  if (value === undefined || value === null) return { ...FLAT, bands: [...FLAT.bands] }
+  const told = value as Partial<Record<keyof Equalizer, unknown>>
   const band = (db: unknown, most = EQUALIZER_MOST) =>
     typeof db === 'number' && Number.isFinite(db) ? Math.max(-most, Math.min(most, Math.round(db))) : 0
   const toldBands = Array.isArray(told.bands) ? (told.bands as unknown[]) : []
@@ -424,70 +422,57 @@ export function toEqualizer(value: unknown): Equalizer {
   }
 }
 
-/** The cab's shared reverb (`speakers::Reverb`): size 0 (compact) to 100 (long sleeper), and how audible the
- * reflections are. */
-export interface Reverb {
-  enabled: boolean
-  size: number
-  amount: number
+/** The low band's own limiter (200 Hz and under alone): where it starts pulling a peak down, the most it sends
+ * on, how softly it comes in, how fast it works, and how far ahead of a peak it looks. Kept with WestPlay's
+ * settings and played by every player (`speakers::Limiter`). */
+export interface Limiter {
+  /** dB: where gain reduction starts, and the level the low band's peaks are held at. */
+  threshold: number
+  /** dB: the most the low band sends on, ever (a hard cap, whenever it is under `threshold`). */
+  ceiling: number
+  /** dB: how far under `threshold` the reduction starts coming in (0: at once). */
+  knee: number
+  /** ms: how fast it pulls a peak down. */
+  attack: number
+  /** ms: how fast it lets go after one. */
+  release: number
+  /** ms: how far ahead of a peak it starts working. */
+  lookahead: number
 }
 
-export const REVERB_MOST = 100
-export const DEFAULT_REVERB: Reverb = { enabled: true, size: 55, amount: 32 }
+/** Each setting's range and the value it falls back to (the host's `speakers::Limiter::clamped`). */
+export const LIMITER_RANGE: Record<keyof Limiter, { least: number; most: number; step: number; falls: number }> = {
+  threshold: { least: -60, most: 0, step: 0.5, falls: 0 },
+  ceiling: { least: -60, most: 0, step: 0.5, falls: -3.5 },
+  knee: { least: 0, most: 24, step: 0.5, falls: 2 },
+  attack: { least: 0.1, most: 100, step: 0.1, falls: 11.5 },
+  release: { least: 10, most: 2000, step: 5, falls: 250 },
+  lookahead: { least: 0, most: 20, step: 0.5, falls: 2.5 },
+}
 
-export function toReverb(value: unknown): Reverb {
-  const told = (value ?? {}) as Partial<Record<keyof Reverb, unknown>>
-  const level = (number: unknown, fallback: number) =>
-    typeof number === 'number' && Number.isFinite(number)
-      ? Math.max(0, Math.min(REVERB_MOST, Math.round(number)))
-      : fallback
-  return {
-    enabled: told.enabled !== false,
-    size: level(told.size, DEFAULT_REVERB.size),
-    amount: level(told.amount, DEFAULT_REVERB.amount),
+export const DEFAULT_LIMITER: Limiter = {
+  threshold: 0,
+  ceiling: -3.5,
+  knee: 2,
+  attack: 11.5,
+  release: 250,
+  lookahead: 2.5,
+}
+
+/** The limiter as the host may send it: each setting within its range (anything else its default). */
+export function toLimiter(value: Partial<Limiter> | undefined): Limiter {
+  const each = (name: keyof Limiter) => {
+    const { least, most, falls } = LIMITER_RANGE[name]
+    const told = Number(value?.[name])
+    return Number.isFinite(told) ? Math.max(least, Math.min(most, told)) : falls
   }
-}
-
-/** The four A/B levels of the cabin model. */
-export type CabinCharacter = 'reference' | 'equalized' | 'impulse' | 'full'
-
-export const CABIN_CHARACTERS: readonly CabinCharacter[] = ['reference', 'equalized', 'impulse', 'full']
-export const DEFAULT_CABIN_CHARACTER: CabinCharacter = 'full'
-
-export function toCabinCharacter(value: unknown): CabinCharacter {
-  return CABIN_CHARACTERS.includes(value as CabinCharacter) ? (value as CabinCharacter) : DEFAULT_CABIN_CHARACTER
-}
-
-export interface CabinReflection {
-  amount: number
-}
-
-export const DEFAULT_CABIN_REFLECTION: CabinReflection = { amount: 100 }
-
-export function toCabinReflection(value: unknown): CabinReflection {
-  const amount = (value as Partial<CabinReflection> | null | undefined)?.amount
   return {
-    amount:
-      typeof amount === 'number' && Number.isFinite(amount)
-        ? Math.max(0, Math.min(100, Math.round(amount)))
-        : DEFAULT_CABIN_REFLECTION.amount,
-  }
-}
-
-export interface BassManagement {
-  cutoff: number
-}
-
-export const BASS_CUTOFF = { min: 30, max: 150, step: 5 } as const
-export const DEFAULT_BASS_MANAGEMENT: BassManagement = { cutoff: 60 }
-
-export function toBassManagement(value: unknown): BassManagement {
-  const cutoff = (value as Partial<BassManagement> | null | undefined)?.cutoff
-  return {
-    cutoff:
-      typeof cutoff === 'number' && Number.isFinite(cutoff)
-        ? Math.max(BASS_CUTOFF.min, Math.min(BASS_CUTOFF.max, Math.round(cutoff)))
-        : DEFAULT_BASS_MANAGEMENT.cutoff,
+    threshold: each('threshold'),
+    ceiling: each('ceiling'),
+    knee: each('knee'),
+    attack: each('attack'),
+    release: each('release'),
+    lookahead: each('lookahead'),
   }
 }
 
@@ -508,18 +493,13 @@ export type PageMessage =
   /** The players' tone, set in Settings › Equalizer: the player's curve, and whether it plays (Custom) or the
    * speakers as tuned (Recommended); kept with WestPlay's settings and played by every player. */
   | ({ type: 'equalizer'; custom: boolean } & Equalizer)
-  /** The cab's shared reverb, kept with WestPlay's settings and played by every player. */
-  | ({ type: 'reverb' } & Reverb)
-  /** The amount of cabin modelling chosen in Settings › Sound. */
-  | { type: 'character'; character: CabinCharacter }
+  /** The low band's own limiter (Settings › Sound › Low Limiter), 200 Hz and under alone; kept with WestPlay's
+   * settings and played by every player. */
+  | ({ type: 'limiter' } & Limiter)
   /** The cab's EQ switch, from Settings › Sound's first row: kept, and every player told. */
   | { type: 'soundEnabled'; enabled: boolean }
   /** The preset chosen in Settings › Sound › Presets (its id; `null`: none), kept with WestPlay's settings. */
   | { type: 'preset'; id: string | null }
-  /** The cabin reflection strength chosen in Settings › Sound. */
-  | ({ type: 'reflection' } & CabinReflection)
-  /** The bass management crossover chosen in Settings › Sound. */
-  | ({ type: 'bass' } & BassManagement)
   /** The music's spectrum wanted (Settings › Equalizer open) or not: the host answers `spectrum` as it plays. */
   | { type: 'spectrum'; on: boolean }
   /** The screen's brightness, set in Settings › Appearance: the slider's place, 0 to 1. The host scales the light of
@@ -901,6 +881,13 @@ export interface AppleMusicCollection {
   tracks: AppleMusicTrack[]
 }
 
+/** QQ Music's daily 30: its card and songs, or what went wrong (`apiKey`: the key, `api`: the service). */
+export interface AppleMusicDaily {
+  item: AppleMusicItem | null
+  tracks: AppleMusicTrack[]
+  error?: 'apiKey' | 'api'
+}
+
 export interface AppleMusicArtist {
   item: AppleMusicItem
   top: AppleMusicTrack[]
@@ -940,6 +927,10 @@ export type AppleMusicQuestion =
   | { ask: 'artist'; id: string; page?: number }
   | { ask: 'library'; shelf: AppleMusicShelf; sort?: string; folder?: string; language?: string }
   | { ask: 'lyrics'; id: string }
+  /** QQ Music's API key, read from its own skills page (signed in). */
+  | { ask: 'key' }
+  /** QQ Music's daily 30, from its skills API. */
+  | { ask: 'daily' }
 
 export interface AppleMusicAnswers {
   home: AppleMusicPage
@@ -952,6 +943,8 @@ export interface AppleMusicAnswers {
   artist: AppleMusicArtist
   library: AppleMusicLibrary
   lyrics: Lyrics
+  key: string
+  daily: AppleMusicDaily
 }
 
 /** A song's words, as Apple Music and Spotify answer them (`westplay_host::lyrics::Lyrics`): line by line with

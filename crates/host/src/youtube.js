@@ -695,7 +695,7 @@
       return
     }
     if (command.action === 'speakers') {
-      cab.speakers(command.speakers)
+      cab.speakers(command.speakers, command.cabin)
       return
     }
     if (command.action === 'outside') {
@@ -704,6 +704,14 @@
     }
     if (command.action === 'head') {
       cab.head(command)
+      return
+    }
+    if (command.action === 'reflections') {
+      cab.reflections(command)
+      return
+    }
+    if (command.action === 'limiter') {
+      cab.limiter(command)
       return
     }
     if (command.action === 'equalizer') {

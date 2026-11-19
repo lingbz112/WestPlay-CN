@@ -597,8 +597,30 @@
   const browseAnswer = async () => {
     const catalogue = await getJson("/api/playlist/catalogue");
     const all = catalogue.all ?? null;
+    const names = (catalogue.sub ?? []).map((each) => each.name);
+    // Each category's cover: a hot playlist's that wears its tag (one hot page answers most of them; a
+    // category left out asks for one playlist of its own).
+    const covers = new Map();
+    const hot = await getJson("/api/playlist/list", { cat: "全部", order: "hot", limit: 100, offset: 0 }).catch(() => ({ playlists: [] }));
+    for (const playlist of hot.playlists ?? []) {
+      for (const tag of playlist.tags ?? []) {
+        if (!covers.has(tag)) covers.set(tag, playlist.coverImgUrl);
+      }
+    }
+    await Promise.all(
+      names
+        .filter((name) => !covers.has(name))
+        .map((name) =>
+          getJson("/api/playlist/list", { cat: name, order: "hot", limit: 1, offset: 0 })
+            .then((answer) => {
+              const cover = answer?.playlists?.[0]?.coverImgUrl;
+              if (cover) covers.set(name, cover);
+            })
+            .catch(() => {}),
+        ),
+    );
     const categories = (catalogue.sub ?? []).map((each) =>
-      itemOf({ kind: "curator", id: each.name, name: each.name, by: `${each.resourceCount ?? 0} 个歌单` }),
+      itemOf({ kind: "curator", id: each.name, name: each.name, by: `${each.resourceCount ?? 0} 个歌单`, image: covers.get(each.name) }),
     );
     return all ? [itemOf({ kind: "curator", id: all.name, name: all.name, by: `${all.resourceCount ?? 0} 个歌单` }), ...categories] : categories;
   };
@@ -687,10 +709,22 @@
     };
     const lyrics = parse(original);
     const translated = parse(translation);
-    const mapped = lyrics.map((line, index) => {
-      const other = translated[index];
-      const text = other && Math.abs(other.start - line.start) < 0.6 && other.text ? `${line.text} / ${other.text}` : line.text;
-      return { start: line.start, end: 0, text, stanza: line.text === "" };
+    // The translation as its own field, lined up by the moment it is sung (QQ Music's way): the app shows it
+    // under the words, and a line the site marks as untranslated ("//") carries none.
+    const words = new Map(
+      translated
+        .filter((line) => line.text && !/^[\/\s]+$/.test(line.text))
+        .map((line) => [Math.round(line.start * 10), line.text]),
+    );
+    const mapped = lyrics.map((line) => {
+      const other = words.get(Math.round(line.start * 10));
+      return {
+        start: line.start,
+        end: 0,
+        text: line.text,
+        ...(other ? { translation: other } : {}),
+        stanza: line.text === "",
+      };
     });
     const timed = mapped.filter((line) => line.start > 0 || line.text);
     for (let index = 0; index < timed.length; index++) {
@@ -751,19 +785,15 @@
   if (cab) setInterval(() => cab.tick(), 250);
 
   const CAB = {
-    speakers: (data) => cab?.speakers(data.speakers),
+    speakers: (data) => cab?.speakers(data.speakers, data.cabin),
     head: (data) => {
       headReady = true;
       cab?.head(data);
     },
     outside: (data) => cab?.outside(data.on, data.distance),
-    equalizer: (data) => {
-      cab?.equalizer(data);
-      cab?.reverb(data.reverb);
-      cab?.character(data.character);
-      cab?.reflection(data.reflection);
-      cab?.bass(data.bassManagement);
-    },
+    equalizer: (data) => cab?.equalizer(data),
+    reflections: (data) => cab?.reflections(data),
+    limiter: (data) => cab?.limiter(data),
     spectrum: (data) => cab?.spectrum(data.on),
   };
 

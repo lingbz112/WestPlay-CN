@@ -472,6 +472,15 @@ export const strings: Strings = {
     custom: 'Custom',
     equalizerFooter:
       'WestPlay plays your music through each truck’s own speakers, tuned for its cab. If you prefer a different sound, you can customize how every music app sounds, in every truck.',
+    lowLimiter: 'Low Limiter',
+    lowLimiterFooter:
+      'Keeps 200 Hz and under from clipping where a truck’s several low units add up; the mids and treble never pass through it.',
+    limiterThreshold: 'Threshold',
+    limiterCeiling: 'Ceiling',
+    limiterKnee: 'Knee',
+    limiterAttack: 'Attack',
+    limiterRelease: 'Release',
+    limiterLookahead: 'Lookahead',
     low: 'Low',
     mid: 'Mid',
     high: 'High',

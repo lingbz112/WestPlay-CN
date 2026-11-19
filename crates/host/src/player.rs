@@ -21,7 +21,7 @@ use westplay_setup::{game, places};
 use westplay_shared::{BridgeMapping, TruckInfo};
 
 use crate::fitted::{self, SavedTruck};
-use crate::speakers::{self, Speaker};
+use crate::speakers::{Cabin, Speaker};
 
 /// How often to look for a newer save.
 const CHECK_EVERY: Duration = Duration::from_secs(10);
@@ -42,11 +42,13 @@ pub struct Player {
     pub mph: Option<bool>,
 }
 
-/// The speakers of the parts of the truck the SDK names (`None`: not found in the save, or no part with any).
+/// The speakers of the parts of the truck the SDK names (`None`: not found in the save, or no part with any),
+/// and its interior's box as a room for sound (none: not read).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PartSpeakers {
     pub truck: TruckInfo,
     pub speakers: Option<Vec<Speaker>>,
+    pub cabin: Option<Cabin>,
 }
 
 pub struct PlayerWatch {
@@ -140,16 +142,16 @@ impl PlayerWatch {
                     }
                     last = Some((path, modified, options_written));
                 }
-                // The speakers of the truck's parts, found again when the truck, its parts or the mods change.
-                if let (Some(truck), Some(game)) = (truck, game.as_ref())
-                    && speakers::by_parts(truck.id.as_str())
-                {
+                // The speakers of the truck's parts (for the trucks whose speakers come with them), and the cab
+                // its interior makes as a room (for every truck: the box is read from the same model), found
+                // again when the truck, its parts or the mods change.
+                if let (Some(truck), Some(game)) = (truck, game.as_ref()) {
                     let saved_truck = fitted::find(&saved, &truck).cloned();
                     let from = (truck, saved_truck, mod_files.clone());
                     if found_from.as_ref() != Some(&from) {
-                        let speakers = part_speakers(&truck, from.1.as_ref(), &game.dir, &mod_files);
+                        let (speakers, cabin) = part_speakers(&truck, from.1.as_ref(), &game.dir, &mod_files);
                         found_from = Some(from);
-                        if speakers_sender.send(PartSpeakers { truck, speakers }).is_err() {
+                        if speakers_sender.send(PartSpeakers { truck, speakers, cabin }).is_err() {
                             return;
                         }
                     }
@@ -173,17 +175,34 @@ fn part_speakers(
     saved: Option<&SavedTruck>,
     game_dir: &Path,
     mod_files: &[PathBuf],
-) -> Option<Vec<Speaker>> {
+) -> (Option<Vec<Speaker>>, Option<Cabin>) {
     let name = format!("{} ({})", truck.id.as_str(), truck.plate.as_str());
     let Some(saved) = saved else {
         log!("speakers: {name} isn't in the save yet");
-        return None;
+        return (None, None);
     };
     let started = Instant::now();
-    let found =
-        fitted::mount(game_dir, mod_files, &saved.model).and_then(|files| fitted::speakers(&files, saved, truck.head));
+    let files = match fitted::mount(game_dir, mod_files, &saved.model) {
+        Ok(files) => files,
+        Err(error) => {
+            log!("speakers: {name}: its parts couldn't be read: {error}");
+            return (None, None);
+        }
+    };
+    let cabin = fitted::cabin(&files, saved, truck.head);
+    match cabin {
+        Some(room) => log!(
+            "speakers: {name}: its room {:.2} x {:.2} x {:.2} m, absorption {:.2}",
+            room.max[0] - room.min[0],
+            room.max[1] - room.min[1],
+            room.max[2] - room.min[2],
+            room.absorption
+        ),
+        None => log!("speakers: {name}: no room read (the page's default)"),
+    }
+    let found = fitted::speakers(&files, saved, truck.head);
     let took = started.elapsed().as_secs_f32();
-    match found {
+    let speakers = match found {
         Ok(Some(fitted)) => {
             log!(
                 "speakers: {name}, {} from its parts in {took:.1} s: {}",
@@ -200,7 +219,8 @@ fn part_speakers(
             log!("speakers: {name}: its parts couldn't be read: {error}");
             None
         }
-    }
+    };
+    (speakers, cabin)
 }
 
 fn read_units(path: &Path) -> Result<Vec<westplay_mapdata::sii::Unit>, String> {

@@ -2,13 +2,6 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import {
   type Equalizer,
-  type CabinCharacter,
-  type BassManagement,
-  type CabinReflection,
-  DEFAULT_BASS_MANAGEMENT,
-  DEFAULT_CABIN_CHARACTER,
-  DEFAULT_CABIN_REFLECTION,
-  DEFAULT_REVERB,
   FLAT,
   type HostMessage,
   type GameWeather,
@@ -16,17 +9,15 @@ import {
   type JobInfo,
   IS_DEMO,
   type KeybindAction,
-  type Reverb,
   isInHost,
   postToHost,
   subscribeHostMessages,
   type Telemetry,
   toEqualizer,
-  toReverb,
-  toCabinCharacter,
-  toBassManagement,
-  toCabinReflection,
+  type Limiter,
   type TruckInfo,
+  DEFAULT_LIMITER,
+  toLimiter,
 } from '../../shared/host'
 import type { Maneuver, TurnKind } from '../maps/guidance'
 import {
@@ -129,12 +120,9 @@ interface CabinState {
    * (Recommended, flat): kept with WestPlay's settings, the host sends them. */
   equalizer: Equalizer
   equalizerCustom: boolean
-  /** The cab's shared reverb (Settings › Sound › Cabin Reverb), kept with WestPlay's settings. */
-  reverb: Reverb
-  /** The amount of cabin modelling used (Settings › Sound › Cabin Character). */
-  cabinCharacter: CabinCharacter
-  reflection: CabinReflection
-  bass: BassManagement
+  /** The low band's own limiter (Settings › Sound › Low Limiter), 200 Hz and under alone. Kept with WestPlay's
+   * settings, the host plays it. */
+  limiter: Limiter
   /** The cab's EQ switch (Settings › Sound's first row): off, every player plays its speakers as they're placed
    * and shapes nothing. Kept with WestPlay's settings, the host tells the players. */
   soundEnabled: boolean
@@ -171,12 +159,8 @@ interface CabinState {
   chooseEqualizer(custom: boolean): void
   /** The curve flat again. */
   resetEqualizer(): void
-  /** Changes the cab's reverb; every field not given stays as it is. */
-  setReverb(change: Partial<Reverb>): void
-  /** Chooses how much of the cabin model every player uses. */
-  setCabinCharacter(character: CabinCharacter): void
-  setReflection(change: Partial<CabinReflection>): void
-  setBass(change: Partial<BassManagement>): void
+  /** The low band's own limiter, one setting at a time (Settings › Sound › Low Limiter). */
+  setLimiter(told: Partial<Limiter>): void
   /** The cab's EQ switch, kept with WestPlay's settings: every player told (off: it shapes nothing). */
   setSoundEnabled(enabled: boolean): void
   /** The preset chosen in Settings › Sound › Presets, kept with WestPlay's settings like the rest. */
@@ -231,10 +215,7 @@ export const useCabin = create<CabinState>()(
       mapRoads: true,
       equalizer: FLAT,
       equalizerCustom: false,
-      reverb: DEFAULT_REVERB,
-      cabinCharacter: DEFAULT_CABIN_CHARACTER,
-      reflection: DEFAULT_CABIN_REFLECTION,
-      bass: DEFAULT_BASS_MANAGEMENT,
+      limiter: DEFAULT_LIMITER,
       soundEnabled: true,
       preset: null,
       presets: [],
@@ -257,48 +238,59 @@ export const useCabin = create<CabinState>()(
       setEqualizerBand: (band, db) => {
         const equalizer = toEqualizer({ ...useCabin.getState().equalizer, [band]: db })
         set({ equalizer, equalizerCustom: true })
-        if (isInHost()) postToHost({ type: 'equalizer', custom: true, ...equalizer })
+        if (isInHost())
+          postToHost({
+            type: 'equalizer',
+            custom: true,
+            ...equalizer,
+          })
       },
       setGraphicBand: (index, db) => {
         const now = useCabin.getState().equalizer
         const bands = now.bands.map((each, at) => (at === index ? db : each))
         const equalizer = toEqualizer({ ...now, bands })
         set({ equalizer, equalizerCustom: true })
-        if (isInHost()) postToHost({ type: 'equalizer', custom: true, ...equalizer })
+        if (isInHost())
+          postToHost({
+            type: 'equalizer',
+            custom: true,
+            ...equalizer,
+          })
       },
       setEqualizerAdvanced: (advanced) => {
         const equalizer = toEqualizer({ ...useCabin.getState().equalizer, advanced })
         set({ equalizer })
-        if (isInHost()) postToHost({ type: 'equalizer', custom: useCabin.getState().equalizerCustom, ...equalizer })
+        if (isInHost())
+          postToHost({
+            type: 'equalizer',
+            custom: useCabin.getState().equalizerCustom,
+            ...equalizer,
+          })
       },
       chooseEqualizer: (custom) => {
         set({ equalizerCustom: custom })
-        if (isInHost()) postToHost({ type: 'equalizer', custom, ...useCabin.getState().equalizer })
+        if (isInHost())
+          postToHost({
+            type: 'equalizer',
+            custom,
+            ...useCabin.getState().equalizer,
+          })
       },
       resetEqualizer: () => {
         // Both curves flat, in whichever set of bands is playing.
         const equalizer = toEqualizer({ ...FLAT, advanced: useCabin.getState().equalizer.advanced })
         set({ equalizer })
-        if (isInHost()) postToHost({ type: 'equalizer', custom: useCabin.getState().equalizerCustom, ...equalizer })
+        if (isInHost())
+          postToHost({
+            type: 'equalizer',
+            custom: useCabin.getState().equalizerCustom,
+            ...equalizer,
+          })
       },
-      setReverb: (change) => {
-        const reverb = toReverb({ ...useCabin.getState().reverb, ...change })
-        set({ reverb })
-        if (isInHost()) postToHost({ type: 'reverb', ...reverb })
-      },
-      setCabinCharacter: (character) => {
-        set({ cabinCharacter: character })
-        if (isInHost()) postToHost({ type: 'character', character })
-      },
-      setReflection: (change) => {
-        const reflection = toCabinReflection({ ...useCabin.getState().reflection, ...change })
-        set({ reflection })
-        if (isInHost()) postToHost({ type: 'reflection', ...reflection })
-      },
-      setBass: (change) => {
-        const bass = toBassManagement({ ...useCabin.getState().bass, ...change })
-        set({ bass })
-        if (isInHost()) postToHost({ type: 'bass', ...bass })
+      setLimiter: (told) => {
+        const limiter = toLimiter({ ...useCabin.getState().limiter, ...told })
+        set({ limiter })
+        if (isInHost()) postToHost({ type: 'limiter', ...limiter })
       },
       setSoundEnabled: (enabled) => {
         set({ soundEnabled: enabled })
@@ -662,10 +654,7 @@ function receiveHostMessage(now: () => number): (message: HostMessage) => void {
         useCabin.setState({
           equalizer: toEqualizer(message.equalizer),
           equalizerCustom: message.equalizerCustom === true,
-          reverb: toReverb(message.reverb),
-          cabinCharacter: toCabinCharacter(message.character),
-          reflection: toCabinReflection(message.reflection),
-          bass: toBassManagement(message.bass),
+          limiter: toLimiter(message.limiter),
           soundEnabled: message.soundEnabled !== false,
           preset: message.preset ?? null,
           mapBuildings: message.buildings !== false,

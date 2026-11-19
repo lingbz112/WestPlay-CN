@@ -500,6 +500,10 @@ function answer(question: Question): Answers[Question['ask']] {
       return library(question.shelf, question.sort)
     case 'lyrics':
       return previewLyrics()
+    case 'key':
+      return ''
+    case 'daily':
+      return { item: null, tracks: [], error: 'api' as const }
   }
 }
 

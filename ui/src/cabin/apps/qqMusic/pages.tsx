@@ -13,6 +13,7 @@ import { useLanguage, useText } from './text'
 import {
   addToLibrary,
   ask,
+  type AppleMusicDaily,
   type AppleMusicItem,
   type AppleMusicResults,
   type AppleMusicSection,
@@ -49,6 +50,7 @@ import {
   NoteGlyph,
   PlayGlyph,
   PlusGlyph,
+  RadioGlyph,
   SearchGlyph,
   ShuffleGlyph,
   StarGlyph,
@@ -129,7 +131,7 @@ function Pitch({ title, text: words }: { title: string; text: string }) {
       </span>
       <div className="am-pitch-text">
         <h2>{title}</h2>
-        <p>{signingIn ? text.appleMusic.finishOnPc : words}</p>
+        {(signingIn || words) && <p>{signingIn ? text.appleMusic.finishOnPc : words}</p>}
       </div>
       <button type="button" className="am-pill key" onClick={signIn} disabled={signingIn}>
         {text.appleMusic.signIn}
@@ -138,12 +140,18 @@ function Pitch({ title, text: words }: { title: string; text: string }) {
   )
 }
 
-/** Home: asked again each time it's shown again (what was played lately changes as it's used). */
+/** Home: the daily 30 and 猜你喜欢 on top, then asked again each time it's shown again. */
 export function Home({ shown }: { shown: boolean }) {
   const text = useText()
   const account = useAccount()
-  const asked = useAsked(account === 'in' ? { ask: 'home' } : null, useShownAgain(shown))
-  const latest = useAsked(account === 'out' ? { ask: 'new' } : null)
+  const visits = useQqMusic((state) => state.visits.home)
+  const shownAgain = useShownAgain(shown)
+  // The skills API's key is read first (its page opened once, signed in), then Home and the daily 30.
+  const keyAsked = useAsked(account === 'in' ? { ask: 'key' } : null)
+  const key = keyAsked.answer
+  const ready = account === 'in' && (key !== null || keyAsked.failed)
+  const dailyAsked = useAsked(account === 'in' && key ? { ask: 'daily' } : null, visits + shownAgain)
+  const asked = useAsked(ready ? { ask: 'home' } : null, visits + shownAgain)
   const title = '首页'
   if (account === 'unknown') {
     return (
@@ -153,23 +161,114 @@ export function Home({ shown }: { shown: boolean }) {
     )
   }
   if (account === 'out') {
-    // Signed out, Home is Apple's ask to sign in, then what's new.
+    // Signed out, Home is the ask to sign in alone: nothing else is shown or asked before it.
     return (
       <Scroll title={title}>
-        <Pitch title={text.appleMusic.homePitch.title} text={text.appleMusic.homePitch.text} />
-        {latest.answer && <Sections sections={latest.answer.sections} />}
+        <Pitch title="需要登录" text="" />
       </Scroll>
     )
   }
   return (
     <Answered asked={asked} title={title}>
-      {(page) => (
-        <Scroll title={title}>
-          {page.sections.length === 0 && <p className="am-empty">{text.appleMusic.empty}</p>}
-          <Sections sections={page.sections} />
-        </Scroll>
-      )}
+      {(page) => {
+        const hero = page.sections.find((section) => section.style === 'hero')
+        const station = hero?.items[0] ?? null
+        const sections = page.sections.filter((section) => section !== hero)
+        return (
+          <Scroll title={title}>
+            <TopRow
+              daily={dailyAsked.answer}
+              station={station}
+              keyFailed={keyAsked.failed}
+              dailyFailed={dailyAsked.failed}
+              onRetry={() => {
+                if (keyAsked.failed) keyAsked.retry()
+                else if (dailyAsked.answer || dailyAsked.failed) dailyAsked.retry()
+                else asked.retry()
+              }}
+            />
+            {sections.length === 0 && <p className="am-empty">{text.appleMusic.empty}</p>}
+            <Sections sections={sections} />
+          </Scroll>
+        )
+      }}
     </Answered>
+  )
+}
+
+/** Home's first row: the daily 30 and 猜你喜欢, named above their covers (each cover whole over its own
+ * blurred picture; the daily's name leads into its playlist). */
+function TopRow({
+  daily,
+  station,
+  keyFailed,
+  dailyFailed,
+  onRetry,
+}: {
+  daily: AppleMusicDaily | null
+  station: AppleMusicItem | null
+  keyFailed: boolean
+  dailyFailed: boolean
+  onRetry(): void
+}) {
+  let dailyError: 'apiKey' | 'api' | null = null
+  if (daily?.error) dailyError = daily.error
+  else if (!daily && (dailyFailed || keyFailed)) dailyError = keyFailed ? 'apiKey' : 'api'
+  const name =
+    dailyError === 'apiKey' ? 'API Key异常' : dailyError === 'api' ? 'API异常' : (daily?.item?.name ?? '每日30首')
+  const cover = daily?.item?.image ?? null
+  const tracks = daily?.tracks ?? []
+  return (
+    <div className="am-top">
+      <div className="am-top-item">
+        <button
+          type="button"
+          className="am-top-name"
+          onClick={
+            dailyError
+              ? onRetry
+              : () => {
+                  if (daily?.item) openView({ kind: 'collection', item: daily.item })
+                }
+          }
+        >
+          {name}
+          {!dailyError && (
+            <span className="am-top-more" aria-hidden>
+              ›
+            </span>
+          )}
+        </button>
+        <div className="am-top-card">
+          {cover && <span className="am-top-blur" style={{ backgroundImage: `url(${cover})` }} />}
+          <button
+            type="button"
+            className="am-top-cover"
+            aria-label={name}
+            onClick={
+              dailyError
+                ? onRetry
+                : () => {
+                    if (daily?.item && tracks.length > 0) playFrom(daily.item, tracks, 0)
+                  }
+            }
+          >
+            {cover ? <img src={cover} alt="" draggable={false} /> : <NoteGlyph size={46} />}
+          </button>
+        </div>
+      </div>
+      <div className="am-top-item">
+        <button type="button" className="am-top-name" disabled={!station} onClick={() => station && openItem(station)}>
+          {station?.name ?? '猜你喜欢'}
+        </button>
+        <button type="button" className="am-top-card" disabled={!station} onClick={() => station && openItem(station)}>
+          {station?.image && <span className="am-top-blur" style={{ backgroundImage: `url(${station.image})` }} />}
+          <span className="am-top-cover">
+            {station?.image ? <img src={station.image} alt="" draggable={false} /> : <RadioGlyph size={46} />}
+          </span>
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -187,11 +286,12 @@ export function New({ shown }: { shown: boolean }) {
 }
 
 export function Radio({ shown }: { shown: boolean }) {
-  const asked = useAsked(shown ? { ask: 'radio' } : null)
+  const visits = useQqMusic((state) => state.visits.radio)
+  const asked = useAsked(shown ? { ask: 'radio' } : null, visits + useShownAgain(shown))
   return (
-    <Answered asked={asked} title="分类歌单">
+    <Answered asked={asked} title="为你推荐">
       {(page) => (
-        <Scroll title="分类歌单">
+        <Scroll title="为你推荐">
           <Sections sections={dedupe(page.sections)} />
         </Scroll>
       )}
@@ -558,7 +658,7 @@ function SearchItem({ item, onPick }: { item: AppleMusicItem; onPick(item: Apple
 export function Page({ view, shown }: { view: View; shown: boolean }) {
   switch (view.kind) {
     case 'collection':
-      return <CollectionPage item={view.item} />
+      return <CollectionPage item={view.item} visible={shown} nonce={view.id} />
     case 'artist':
       return <ArtistPage item={view.item} />
     case 'curator':
@@ -568,16 +668,18 @@ export function Page({ view, shown }: { view: View; shown: boolean }) {
     case 'searchGroup':
       return <SearchGroupPage query={view.query} group={view.group} />
     case 'library':
-      return <LibraryShelfPage shelf={view.shelf} folder={view.folder} shown={shown} />
+      return <LibraryShelfPage shelf={view.shelf} folder={view.folder} shown={shown} nonce={view.id} />
     case 'section':
       return <SectionPage section={view.section} />
   }
 }
 
-/** An album's or playlist's page: the cover beside its name, who it's by, Play and Shuffle; its songs under. */
-function CollectionPage({ item }: { item: AppleMusicItem }) {
+/** An album's or playlist's page: the cover beside its name, who it's by, Play and Shuffle; its songs under.
+ * Asked afresh each time it is opened (`nonce`) or shown again: a song liked since (or one taken out of a
+ * playlist) is in its list the next time. */
+function CollectionPage({ item, visible, nonce }: { item: AppleMusicItem; visible: boolean; nonce: number }) {
   const text = useText()
-  const asked = useAsked({ ask: 'collection', id: item.id })
+  const asked = useAsked({ ask: 'collection', id: item.id }, nonce + useShownAgain(visible))
   const page = asked.answer
   const shown = page?.item ?? item
   const tracks = page?.tracks ?? []
@@ -858,14 +960,17 @@ function LibraryShelfPage({
   shelf,
   folder,
   shown,
+  nonce,
 }: {
   shelf: AppleMusicShelf
   folder?: AppleMusicItem
   shown: boolean
+  nonce: number
 }) {
   const text = useText()
   const language = useLanguage()
   const look = useQqMusic((state) => state.libraryLooks[shelf])
+  const visits = useQqMusic((state) => state.visits.library)
   const asked = useAsked(
     {
       ask: 'library',
@@ -875,7 +980,7 @@ function LibraryShelfPage({
       // These pages' own UI is English or Turkish (a Chinese game gets English there, as YouTube Music does).
       language: language === 'tr' ? 'tr' : 'en',
     },
-    useShownAgain(shown),
+    visits + nonce + useShownAgain(shown),
   )
   // A new sort shows the list as it was until the sorted one comes.
   const [kept, setKept] = useState(asked.answer)

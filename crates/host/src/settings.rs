@@ -102,21 +102,12 @@ pub struct SoundSettings {
     /// The player's own curve.
     #[serde(deserialize_with = "lenient")]
     pub equalizer: crate::speakers::Equalizer,
+    /// The low band's own limiter (Settings › Sound › Low Limiter), 200 Hz and under alone.
+    #[serde(deserialize_with = "lenient")]
+    pub limiter: crate::speakers::Limiter,
     /// Custom chosen: the curve plays (otherwise flat).
     #[serde(deserialize_with = "lenient")]
     pub custom: bool,
-    /// The cab's shared reflections (Settings › Sound › Cabin Reverb).
-    #[serde(deserialize_with = "lenient")]
-    pub reverb: crate::speakers::Reverb,
-    /// The amount of cabin modelling used (Settings › Sound › Cabin Character).
-    #[serde(deserialize_with = "lenient")]
-    pub character: crate::speakers::CabinCharacter,
-    /// The strength of the fixed-direction cabin reflections.
-    #[serde(deserialize_with = "lenient")]
-    pub reflection: crate::speakers::CabinReflection,
-    /// Always-on bass management's mono crossover.
-    #[serde(deserialize_with = "lenient")]
-    pub bass: crate::speakers::BassManagement,
     /// Which of a coach's speakers play (the companion's Truck Screen page).
     #[serde(deserialize_with = "lenient")]
     pub coach: CoachSpeakers,
@@ -128,11 +119,8 @@ impl Default for SoundSettings {
             enabled: true,
             preset: None,
             equalizer: Default::default(),
+            limiter: Default::default(),
             custom: false,
-            reverb: Default::default(),
-            character: Default::default(),
-            reflection: Default::default(),
-            bass: Default::default(),
             coach: CoachSpeakers::default(),
         }
     }
@@ -614,11 +602,8 @@ mod tests {
                 enabled: true,
                 preset: Some("cabin-a".into()),
                 equalizer: crate::speakers::Equalizer { bass: -3, mid: 1, treble: 2, ..Default::default() },
+                limiter: crate::speakers::Limiter { threshold: -9.0, ..Default::default() },
                 custom: true,
-                reverb: crate::speakers::Reverb { enabled: true, size: 72, amount: 38 },
-                character: crate::speakers::CabinCharacter::Full,
-                reflection: crate::speakers::CabinReflection { amount: 80 },
-                bass: crate::speakers::BassManagement { cutoff: 70 },
                 coach: CoachSpeakers::Passengers,
             },
             map: MapSettings { buildings: false, roads: false, fast: true },
@@ -632,10 +617,9 @@ mod tests {
         assert!(json.contains("\"truckStrip\": \"off\""), "{json}");
         assert!(json.contains("\"language\": \"pt_br\""), "{json}");
         let saved: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(saved["sound"]["reflection"]["amount"], 80, "{json}");
         assert_eq!(saved["sound"]["enabled"], true, "{json}");
         assert_eq!(saved["sound"]["preset"], "cabin-a", "{json}");
-        assert_eq!(saved["sound"]["bass"]["cutoff"], 70, "{json}");
+        assert_eq!(saved["sound"]["limiter"]["threshold"], -9.0, "{json}");
         assert_eq!(parse(&json).unwrap(), settings);
     }
 

@@ -314,12 +314,28 @@ function TabPage({ tab, shown }: { tab: Tab; shown: boolean }) {
 }
 
 /** A layer: a page just opened comes in from the side (where it's going, forward); one shown again (Back, a
- * tab chosen again) only fades up, where it was. */
+ * tab chosen again) only fades up, where it was. Coming to rest after its own arrival it stays put — a
+ * second fade there would flash the page away and back. */
 function Layer({ shown, opened, children }: { shown: boolean; opened: boolean; children: ReactNode }) {
   const [fresh, setFresh] = useState(opened)
-  const className = !shown ? 'am-layer away' : fresh ? 'am-layer fresh' : 'am-layer'
+  const [rest, setRest] = useState(false)
+  if (!shown && rest) setRest(false)
+  const className = !shown
+    ? 'am-layer away'
+    : fresh
+      ? 'am-layer fresh'
+      : rest
+        ? 'am-layer fresh rest'
+        : 'am-layer'
   return (
-    <div className={className} onAnimationEnd={(event) => event.target === event.currentTarget && setFresh(false)}>
+    <div
+      className={className}
+      onAnimationEnd={(event) => {
+        if (event.target !== event.currentTarget || !fresh) return
+        setFresh(false)
+        setRest(true)
+      }}
+    >
       {children}
     </div>
   )

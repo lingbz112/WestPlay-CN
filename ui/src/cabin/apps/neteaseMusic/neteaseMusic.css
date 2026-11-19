@@ -338,6 +338,11 @@
   animation: am-layer-in 380ms var(--motion-ease) both;
 }
 
+/* Settled after its own arrival: no second fade (it would flash the page away and back). */
+.shell .am-layer.fresh.rest {
+  animation: none;
+}
+
 .shell .am-layer:not(.away):not(.fresh) {
   animation: am-layer-back 220ms var(--motion-ease) both;
 }
@@ -577,8 +582,8 @@
 .shell .am-hero-art {
   position: relative;
   display: grid;
-  place-items: center;
-  aspect-ratio: 12 / 5;
+  place-items: start center;
+  aspect-ratio: 2.2 / 1;
   overflow: hidden;
   border-radius: var(--am-corner);
   background: var(--cover);
@@ -590,10 +595,12 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  filter: blur(24px) brightness(0.9) saturate(1.1);
+  transform: scale(1.12);
 }
 
 .shell .am-hero-cover {
-  width: 38%;
+  height: 100%;
   box-shadow: var(--shadow-raised-large);
 }
 
@@ -1825,7 +1832,3 @@
   vertical-align: 0.12em;
 }
 
-/* The two cards' covers are square: the whole picture, not a crop. */
-.shell .am-shelf.am-heroes.two .am-hero-art > img {
-  object-fit: contain;
-}

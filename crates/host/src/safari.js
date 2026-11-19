@@ -160,18 +160,13 @@
   delete window.westplayCabSound
   if (cab) setInterval(() => cab.tick(), 250)
   const CAB = {
-    speakers: (data) => cab?.speakers(data.speakers),
+    speakers: (data) => cab?.speakers(data.speakers, data.cabin),
     head: (data) => cab?.head(data),
     outside: (data) => cab?.outside(data.on, data.distance),
-    // The player's tone and the cabin's shaping: the equalizer (three bands or the fifteen-band curve), the
-    // reverb, the cabin character, its reflections and the bass management, as the music apps take them.
-    equalizer: (data) => {
-      cab?.equalizer(data)
-      cab?.reverb(data.reverb)
-      cab?.character(data.character)
-      cab?.reflection(data.reflection)
-      cab?.bass(data.bassManagement)
-    },
+    // The player's tone: the equalizer (three bands or the fifteen-band curve), as the music apps take it.
+    equalizer: (data) => cab?.equalizer(data),
+    reflections: (data) => cab?.reflections(data),
+    limiter: (data) => cab?.limiter(data),
     spectrum: (data) => cab?.spectrum(data.on),
   }
   const act = (message) => {

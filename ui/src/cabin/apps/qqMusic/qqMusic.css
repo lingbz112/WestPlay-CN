@@ -200,6 +200,13 @@
   height: 100%;
 }
 
+/* Signed out, the tabs and Search are greyed away: the app is the ask to sign in alone. */
+.shell .am-tab:disabled,
+.shell .am-search-button:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* The cab's text field, in Apple's search field's look inside the glass: no ring, the key colour's caret. */
 .shell .am-app .text-field {
   flex: 1;
@@ -335,6 +342,11 @@
 
 .shell .am-layer.fresh {
   animation: am-layer-in 380ms var(--motion-ease) both;
+}
+
+/* Settled after its own arrival: no second fade (it would flash the page away and back). */
+.shell .am-layer.fresh.rest {
+  animation: none;
 }
 
 .shell .am-layer:not(.away):not(.fresh) {
@@ -1535,6 +1547,96 @@
 .shell .am-prompt-buttons .am-pill {
   flex: 1;
   border-radius: 32px;
+}
+
+/* --- Home's first row ------------------------------------------------------------------------------------- */
+
+.shell .am-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 6px 0 26px;
+}
+
+.shell .am-top-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shell .am-top-card {
+  position: relative;
+  min-width: 0;
+  padding: 0;
+  aspect-ratio: 2.2 / 1;
+  overflow: hidden;
+  border: 0;
+  border-radius: 20px;
+  background: var(--am-fill);
+  color: var(--am-label);
+}
+
+.shell .am-top-blur {
+  position: absolute;
+  inset: -16%;
+  background-position: center;
+  background-size: cover;
+  filter: blur(24px) brightness(0.9) saturate(1.1);
+  transform: scale(1.12);
+}
+
+.shell .am-top-cover {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--am-label);
+  padding: 0;
+  transform: translateX(-50%);
+}
+
+.shell .am-top-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shell .am-top-name {
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--am-label);
+  font-size: var(--am-type-section);
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell .am-top-more {
+  margin-left: 6px;
+  color: var(--am-dim);
+  font-weight: 500;
+}
+
+.shell .am-top-name:disabled {
+  opacity: 0.55;
+}
+
+.shell .am-top-card:disabled {
+  opacity: 0.55;
 }
 
 /* --- Now Playing: CarPlay's (music.css), rising over the app ---------------------------------------------- */

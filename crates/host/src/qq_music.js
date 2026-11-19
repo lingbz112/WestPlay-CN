@@ -141,16 +141,31 @@
   };
   const qqApi = async (module, usable = (api) => api) => {
     const require = await waitFor(() => window.__westplayRequire);
-    if (!require) throw new Error("QQ Music API is not ready");
+    if (!require) {
+      log(`api ${module}: no require (factories ${window.__westplayFactories?.size ?? 0})`);
+      throw new Error("QQ Music API is not ready");
+    }
+    // Why the wait found nothing, for the failure's log: an id the site no longer has ("throws") told apart
+    // from one it has but shapes otherwise ("unusable"), and from one that simply never arrived.
+    let why = "nothing";
     const api = await waitFor(() => {
       try {
         const value = require(module);
-        return usable(value) ? value : null;
-      } catch {
+        if (usable(value)) return value;
+        why = `unusable ${typeof value} [${value ? Object.keys(value).slice(0, 8).join(" ") : ""}]`;
+        return null;
+      } catch (error) {
+        why = `throws ${String(error).slice(0, 100)}`;
         return null;
       }
     });
-    if (!api) throw new Error(`QQ Music API ${module} is not ready`);
+    if (!api) {
+      const factories = window.__westplayFactories;
+      log(
+        `api ${module}: ${why}; factories ${factories?.size ?? 0}, id ${factories?.has(String(module)) ? "known" : "missing"}`,
+      );
+      throw new Error(`QQ Music API ${module} is not ready`);
+    }
     return api;
   };
   const within = (promise, milliseconds, message) =>
@@ -160,10 +175,9 @@
         setTimeout(() => reject(new Error(message)), milliseconds),
       ),
     ]);
-  const reportApi = async () =>
-    qqApi(467, (api) => typeof api?.f === "function");
-  const tracksApi = async () =>
-    qqApi(449, (api) => typeof api?.m === "function");
+  // The site's own signed request (module 8): only the favorite write still rides it — its signature comes
+  // from QQ's own anti-scraping SDK and cannot be reproduced off the page (an unsigned write answers success
+  // without touching the account). Every read now goes straight to the same HTTP APIs the module wraps.
   const requestApi = async () => {
     const api = (
       await qqApi(8, (value) => typeof value?.j === "function")
@@ -206,6 +220,65 @@
     );
     const src = image?.currentSrc || image?.src || "";
     return src.startsWith("https://") && !src.startsWith("data:") ? src : null;
+  };
+
+  // --- The skills API's key ---------------------------------------------------------------------------------
+  //
+  // QQ Music's own skills page shows the account's key: masked until its eye is pressed. The page is read here
+  // (the same cookies), and the key is kept for this session: only the daily 30 uses it.
+  const KEY_PAGE = `${ORIGIN}/n/ryqq_v2/qqmusic_skills`;
+  let apiKey = null;
+  // Two asks at once (React's double effect in dev) must not navigate over each other: one page opens.
+  let keyOpening = false;
+  const keyOf = async () => {
+    if (apiKey) return apiKey;
+    if (!signedIn()) {
+      log("key: not signed in");
+      return null;
+    }
+    if (!location.pathname.includes("qqmusic_skills")) {
+      if (!keyOpening) {
+        keyOpening = true;
+        log(`key: opening the skills page from ${location.pathname}`);
+        navigate(KEY_PAGE);
+        setTimeout(() => {
+          keyOpening = false;
+        }, 3000);
+      }
+      // Navigating: the host asks again once the page loads.
+      return undefined;
+    }
+    // Every key the page shows (the setup's, and the rows of the account's own): the unmasked one is used.
+    const rawKeys = () =>
+      all(".api_key_text")
+        .map((each) => String(each.textContent ?? ""))
+        .filter(Boolean);
+    const clean = (text) => text.replace(/[^A-Za-z0-9-]/g, "");
+    const keys = () => rawKeys().filter((text) => !text.includes("*")).map(clean).filter(Boolean);
+    const usable = () => keys().find((text) => /^qmk-[a-z0-9-]+$/i.test(text)) ?? null;
+    const summaries = () =>
+      rawKeys()
+        .map((each) => `${each.length}ch/${(each.match(/\*/g) ?? []).length}*`)
+        .join(", ");
+    const text = await waitFor(() => rawKeys()[0] || null, 15000);
+    if (!text) {
+      log("key: no .api_key_text on the skills page");
+      return null;
+    }
+    let full = usable();
+    if (!full) {
+      const eyes = all(".api_key_eye");
+      log(`key: ${rawKeys().length} texts (${summaries()}), ${eyes.length} eyes`);
+      for (const eye of eyes) eye.click();
+      full = await waitFor(usable, 3000);
+      if (!full) {
+        log(`key: no usable key after the eyes (${summaries()})`);
+        return null;
+      }
+    }
+    apiKey = full;
+    log(`key: read (${full.length} chars)`);
+    return apiKey;
   };
 
   // --- Pages -----------------------------------------------------------------------------------------------
@@ -409,6 +482,46 @@
   });
   const emptyPage = () => page([]);
 
+  /** The 猜你喜欢 station of the radio page, its cover read there (kept for the session). */
+  let stationItem;
+  const recommendStation = async () => {
+    if (stationItem !== undefined) return stationItem;
+    try {
+      const doc = await within(
+        fetchDoc(`${ORIGIN}/n/ryqq_v2/radio`),
+        8000,
+        "QQ Music station timed out",
+      );
+      const data = initialData(doc);
+      const groups = data?.radio_list ?? data?.data?.radio_list ?? [];
+      const found = (Array.isArray(groups) ? groups : [])
+        .flatMap((group) => group?.list ?? [])
+        .find(
+          (station) =>
+            Number(station?.id) === 99 ||
+            norm(station?.title) === "猜你喜欢",
+        );
+      stationItem = found
+        ? {
+            id: `qq:station:${found.id}`,
+            kind: "station",
+            name: norm(found.title) || "猜你喜欢",
+            by: "",
+            note: "",
+            image: imageUrl(found.pic_url),
+            wide: null,
+            color: COLOR,
+            explicit: false,
+            live: false,
+          }
+        : null;
+    } catch (error) {
+      log(`station: ${error}`);
+      stationItem = null;
+    }
+    return stationItem;
+  };
+
   const homePage = async () => {
     await waitFor(
       () =>
@@ -426,6 +539,8 @@
       enrichItems(items("album").slice(0, 8), 8),
     ]);
     const sections = [];
+    const station = await recommendStation();
+    if (station) sections.push(section("", "hero", [station], []));
     if (playlists.length)
       sections.push(section("热门歌单", "shelf", playlists, []));
     if (songs.length) sections.push(section("新歌首发", "songs", [], songs));
@@ -439,6 +554,11 @@
       const sections = groups
         .map((group) => {
           const stations = (group?.list ?? [])
+            .filter(
+              (station) =>
+                Number(station?.id) !== 99 &&
+                norm(station?.title) !== "猜你喜欢",
+            )
             .map((station, index) => {
               const id = Number(station?.id);
               const name = norm(station?.title);
@@ -474,7 +594,7 @@
         const stations = all(".radio_list__item", group)
           .map((item, index) => {
             const name = norm(item.textContent);
-            if (!name) return null;
+            if (!name || name === "猜你喜欢") return null;
             return {
               id: `qq:radio:name:${encodeURIComponent(name)}`,
               kind: "station",
@@ -500,12 +620,40 @@
       playlists.length ? [section("雷达", "shelf", playlists, [])] : [],
     );
   };
+  /** 为你推荐: the account's AI playlists (QQ Music's 9527 category), fetched afresh each time. */
   const radioPage = async () => {
-    const playlists = items("playlist").slice(0, 40);
-    const sections = [];
-    if (playlists.length)
-      sections.push(section("分类歌单", "shelf", playlists, []));
-    return page(sections);
+    const profile = await profileData();
+    const caller = String(profile?.pageuin ?? "");
+    if (!caller) return emptyPage();
+    const data = await api(
+      "music.playlist.AiPlCategory",
+      "get_ai_category_content",
+      { caller, category_id: 9527, size: 20, page: 0, use_page: 1 },
+      caller,
+    );
+    const cards = data?.content?.v_item ?? [];
+    const items = cards
+      .map((card) => {
+        const basic = card?.basic ?? card ?? {};
+        const id = String(basic?.tid ?? basic?.dissid ?? "");
+        const name = norm(basic?.title ?? basic?.dissname);
+        if (!id || id === "0" || !name) return null;
+        return {
+          id: `qq:playlist:${id}`,
+          kind: "playlist",
+          name,
+          by: norm(basic?.creator?.nick),
+          note: "",
+          image: imageUrl(basic?.cover?.default_url) ?? DEFAULT_IMAGE,
+          wide: null,
+          color: COLOR,
+          explicit: false,
+          live: false,
+        };
+      })
+      .filter(Boolean);
+    log(`recommend: ${cards.length} cards, ${items.length} playlists`);
+    return page([section("为你推荐", "shelf", items, [])]);
   };
 
   const fetchDoc = async (url) => {
@@ -661,13 +809,16 @@
     const mids = [...byId.keys()];
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const api = await tracksApi();
         for (let start = 0; start < mids.length; start += 100) {
           const part = mids.slice(start, start + 100);
-          const raw = await api.m(
-            part,
-            part.map(() => 0),
+          const answers = await apiMany(
+            part.map((mid) => ({
+              module: "music.pf_song_detail_svr",
+              method: "get_song_detail_yqq",
+              param: { song_mid: mid },
+            })),
           );
+          const raw = answers.map((answer) => answer?.data?.track_info);
           for (const song of raw ?? []) {
             const track = byId.get(song?.mid);
             if (!track) continue;
@@ -779,7 +930,6 @@
     }
     if (collectionKind === "playlist") {
       try {
-        const request = await requestApi();
         const songs = [];
         let total = Infinity;
         let info = null;
@@ -789,7 +939,7 @@
           start += 100, page++
         ) {
           const response = await within(
-            request([
+            apiMany([
               {
                 module: "music.srfDissInfo.aiDissInfo",
                 method: "uniform_get_Dissinfo",
@@ -943,9 +1093,8 @@
   /** The artist's own words, from the site's homepage tab (`wiki`): its paragraphs' text. */
   const artistBio = async (artistId) => {
     try {
-      const request = await requestApi();
       const [data] = await within(
-        request([
+        apiMany([
           {
             module: "music.UnifiedHomepage.UnifiedHomepageSrv",
             method: "GetHomepageTabDetail",
@@ -1004,7 +1153,6 @@
     };
     if (at === 1) item.note = words || (await artistBio(artistId)) || norm(node?.description);
     if (at === 1) log(`artist ${artistId} bio: ${item.note.length} chars`);
-    const request = await requestApi();
     const requests = [
       {
         module: "musichall.song_list_server",
@@ -1018,7 +1166,7 @@
         method: "GetAlbumList",
         param: { singerMid: artistId, order: 1, number: 30, begin: 0 },
       });
-    const answers = await within(request(requests), 20000, "QQ Music artist timed out");
+    const answers = await within(apiMany(requests), 20000, "QQ Music artist timed out");
     const songs = (answers?.[0]?.data?.songList ?? [])
       .map((each) => trackFromApi(each?.songInfo ?? each))
       .filter(Boolean);
@@ -1029,7 +1177,7 @@
       let begin = albumRows.length;
       for (let page = 0; page < 10 && begin > 0 && (total > 0 ? begin < total : albumRows.length >= 30); page++) {
         const [data] = await within(
-          request([
+          apiMany([
             {
               module: "music.musichallAlbum.AlbumListServer",
               method: "GetAlbumList",
@@ -1177,15 +1325,45 @@
       live: false,
     };
   };
+  /** A GET of the account's own web APIs: the answer as JSON (one of them wraps it in a callback: unwrapped
+   * here). These are plain public endpoints — no signature, just the page's own cookies. */
+  const webGet = async (url, data) => {
+    const query = Object.entries(data)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join("&");
+    const response = await fetch(`${url}?${query}`, { credentials: "include" });
+    if (!response.ok) throw new Error(`http ${response.status}`);
+    const text = await response.text();
+    return JSON.parse(
+      text.replace(/^\s*[\w.]+\(/, "").replace(/\)?\s*;?\s*$/, ""),
+    );
+  };
   let cachedProfile = null;
+  /** The account: its uin, and its 我喜欢 playlist's id (the homepage API's `mymusic` names it). */
   const profileData = async () => {
     if (!signedIn()) return null;
     if (cachedProfile) return cachedProfile;
-    cachedProfile = await within(
-      (await reportApi()).f({ uin: "" }),
+    const data = await within(
+      webGet("https://c.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg", {
+        cid: 205360838,
+        ct: 24,
+        userid: 0,
+        reqfrom: 1,
+        reqtype: 0,
+        hostUin: 0,
+        loginUin: cookie("uin") || 0,
+        needNewCode: 0,
+      }),
       15000,
       "QQ Music profile timed out",
     );
+    const mine = (data?.data?.mymusic ?? []).find(
+      (each) => Number(each?.type) === 1,
+    );
+    cachedProfile = {
+      pageuin: cookie("uin") || "0",
+      myFavDissId: Number(mine?.id) || 0,
+    };
     return cachedProfile;
   };
   /**
@@ -1201,8 +1379,8 @@
     if (liked) return liked;
     likedLoading ??= (async () => {
       const profile = await profileData();
-      if (!profile?.pageuin) return null;
-      const api = await reportApi();
+      const disstid = Number(profile?.myFavDissId);
+      if (!disstid) return null;
       const rows = [];
       let total = Infinity;
       for (
@@ -1210,14 +1388,20 @@
         start < total && page < 12;
         start += 100, page++
       ) {
-        const part = await within(
-          api.h(["like", "song"], profile, { start, pageSize: 100 }),
+        const [answer] = await within(
+          apiMany([
+            {
+              module: "music.srfDissInfo.aiDissInfo",
+              method: "uniform_get_Dissinfo",
+              param: { song_begin: start, song_num: 100, disstid },
+            },
+          ]),
           15000,
           "QQ Music liked songs timed out",
         );
-        const pageRows = part?.songlist ?? [];
+        const pageRows = answer?.data?.songlist ?? [];
         rows.push(...pageRows);
-        total = Number(part?.totalNum);
+        total = Number(answer?.total_song_num ?? answer?.data?.total_song_num);
         if (!Number.isFinite(total) || total <= 0)
           total = pageRows.length < 100 ? start + pageRows.length : start + pageRows.length + 1;
         if (!pageRows.length || pageRows.length < 100) break;
@@ -1237,11 +1421,12 @@
 
   const libraryAnswer = async (shelf) => {
     if (!signedIn()) return { items: [], songs: [], sorts: [], sort: null };
+    // Every entry shows the account's lists as they are now: the liked songs fetched again.
+    if (shelf === "songs") liked = null;
     const profile = await profileData();
     if (!profile?.pageuin) throw new Error("QQ Music account is not ready");
-    const api = await reportApi();
     const size = 100;
-    const pages = async (load, key, totalKey) => {
+    const pages = async (load) => {
       const rows = [];
       let total = Infinity;
       for (
@@ -1254,15 +1439,14 @@
           15000,
           "QQ Music list timed out",
         );
-        const pageRows = part?.[key];
-        const reached = Array.isArray(pageRows) ? pageRows.length : 0;
-        if (Array.isArray(pageRows)) rows.push(...pageRows);
-        total = Number(part?.[totalKey]);
+        const reached = part.rows.length;
+        rows.push(...part.rows);
+        total = Number(part.total);
         if (!Number.isFinite(total) || total <= 0)
           total = reached < size ? start + reached : start + size + 1;
         if (reached === 0 || reached < size) break;
       }
-      return { rows, total };
+      return rows;
     };
     if (shelf === "songs") {
       const list = await loadLiked();
@@ -1276,12 +1460,22 @@
       };
     }
     if (shelf === "playlists" || shelf === "recent") {
-      const { rows } = await pages(
-        (start, pageSize) =>
-          api.h(["create", ""], profile, { start, pageSize }),
-        "myCreatedPlaylist",
-        "totalNum",
-      );
+      const rows = await pages(async (start, pageSize) => {
+        const data = await webGet(
+          "https://c.y.qq.com/rsc/fcgi-bin/fcg_user_created_diss",
+          { hostuin: profile.pageuin, sin: start, size: pageSize + 1 },
+        );
+        // The special folders (我喜欢, QZone, uploads) have no playlist id: not openable here, left out.
+        const list = (data?.data?.disslist ?? []).filter((row) => row?.tid);
+        return {
+          rows: list.map((row) => ({
+            dissid: row.tid,
+            dissname: row.diss_name,
+            diss_cover: row.diss_cover,
+          })),
+          total: Number(data?.data?.totoal),
+        };
+      });
       return {
         items: rows
           .map(playlistFromApi)
@@ -1295,12 +1489,22 @@
       };
     }
     if (shelf === "artists") {
-      const { rows } = await pages(
-        (start, pageSize) =>
-          api.h(["buy", "song"], profile, { start, pageSize }),
-        "boughtsong",
-        "boughtTotal",
-      );
+      const rows = await pages(async (start, pageSize) => {
+        const data = await webGet(
+          "https://c.y.qq.com/shop/fcgi-bin/fcg_get_order",
+          {
+            from: 1,
+            cmd: "sales_album",
+            type: 2,
+            t: Date.now(),
+            uin: profile.pageuin,
+            start,
+            num: pageSize,
+            platform: "yqq",
+          },
+        );
+        return { rows: data?.data?.songlist ?? [], total: data?.data?.total };
+      });
       return {
         items: [],
         songs: tracksFromInitial({ songlist: rows }),
@@ -1309,12 +1513,28 @@
       };
     }
     if (shelf === "albums") {
-      const { rows } = await pages(
-        (start, pageSize) =>
-          api.h(["like", "album"], profile, { start, pageSize }),
-        "albumlist",
-        "totalNum",
-      );
+      const rows = await pages(async (start, pageSize) => {
+        const data = await webGet(
+          "https://c.y.qq.com/fav/fcgi-bin/fcg_get_profile_order_asset.fcg",
+          {
+            ct: 20,
+            cid: 205360956,
+            userid: profile.pageuin,
+            reqtype: 2,
+            sin: start,
+            ein: start + pageSize - 1,
+          },
+        );
+        // The rows name the singer and cover in their own way: shaped as the shelves read them.
+        return {
+          rows: (data?.data?.albumlist ?? []).map((row) => ({
+            ...row,
+            singer: row.singername,
+            picurl: row.pic,
+          })),
+          total: data?.data?.totalalbum,
+        };
+      });
       return {
         items: rows
           .map((album) => ({
@@ -1346,9 +1566,8 @@
         .map((part) => decodeURIComponent(part || ""));
       if (title) {
         try {
-          const request = await requestApi();
           const response = await within(
-            request([
+            apiMany([
               {
                 module: "music.search.SearchCgiService",
                 method: "DoSearchForQQMusicDesktop",
@@ -1382,9 +1601,8 @@
     }
     if (!mid) return { synced: false, lines: [] };
     // The words and the site's own translation of them (bilingual songs have one), from its lyric API.
-    const request = await requestApi();
     const [answer] = await within(
-      request([
+      apiMany([
         {
           module: "music.musichallSong.PlayLyricInfo",
           method: "GetPlayLyricInfo",
@@ -1479,10 +1697,9 @@
     const tries = [];
     for (const [key, name, remoteplace, types] of wanted)
       for (const search_type of types) tries.push({ key, name, remoteplace, search_type });
-    const request = await requestApi();
     const searchid = String(Date.now());
     const response = await within(
-      request(
+      apiMany(
         tries.map(({ remoteplace, search_type }) => ({
           module: "music.search.SearchCgiService",
           method: "DoSearchForQQMusicDesktop",
@@ -1539,11 +1756,12 @@
           answer = await newPage();
           break;
         case "radio":
-          if (!location.pathname.includes("/category")) {
-            navigate(`${ORIGIN}/n/ryqq_v2/category`);
-            return;
-          }
           answer = await radioPage();
+          break;
+        case "key":
+          answer = await keyOf();
+          if (answer === undefined) return;
+          if (answer === null) post({ answer: id, failed: true });
           break;
         case "browse":
           answer = [];
@@ -1636,7 +1854,7 @@
     }
     if (!response.ok) throw new Error(`http ${response.status}`);
     const answer = await response.json();
-    return requests.map((_, i) => answer?.[`req_${i}`]?.data ?? null);
+    return requests.map((_, i) => answer?.[`req_${i}`] ?? null);
   };
 
   const byMid = new Map();
@@ -1706,8 +1924,8 @@
             param: { song_mid: mid },
           })),
         );
-        answers.forEach((data, i) => {
-          const raw = data?.track_info;
+        answers.forEach((answer, i) => {
+          const raw = answer?.data?.track_info;
           const track = raw ? trackFromApi(raw) : null;
           if (track) byMid.set(batch[i], track);
         });
@@ -1982,7 +2200,7 @@
     sound?.wake?.();
     void favourOf(mid).then((on) => on !== null && sayPlayback(true));
     failures = 0;
-    setTimeout(checkAudible, 1200);
+    setTimeout(checkAudible, 5000);
     loading = false;
     sayPlayback(true);
     for (const mid of queue.ids.slice(queue.index + 1, queue.index + 3)) urlOf(mid);
@@ -2185,15 +2403,17 @@
   );
 
   // A song that plays silently: taken into the cab's way but with nothing coming out of it (a context the
-  // browser left asleep, a way that couldn't be made). A second in, it is played as it is instead — plainly
+  // browser left asleep, a way that couldn't be made). Five seconds in, it is played as it is instead — plainly
   // heard beats not heard — and the log says why (the cab is given up for that song only).
   const checkAudible = () => {
     const element = audio;
     if (!element || audio !== element || element.paused || element.error) return;
-    // What was heard a second in (a song that runs on silently is read from this line).
+    // What was heard five seconds in (a song that runs on silently is read from this line).
     {
       const way = sound?.state?.() ?? {};
-      log(`heard: ${throughCab && headReady ? `cab level ${way.level ?? "?"}` : "as it is"}, context ${way.context ?? "?"}`);
+      log(
+        `heard: ${throughCab && headReady ? `cab level ${way.level ?? "?"}` : "as it is"}, context ${way.context ?? "?"}, room ${way.room ? "on" : "off"}`,
+      );
     }
     if (!throughCab || !headReady) return;
     const way = sound?.state?.() ?? {};
@@ -2230,19 +2450,15 @@
   };
 
   const CAB = {
-    speakers: (data) => sound?.speakers(data.speakers),
+    speakers: (data) => sound?.speakers(data.speakers, data.cabin),
     head: (data) => {
       headReady = true;
       sound?.head(data);
     },
     outside: (data) => sound?.outside(data.on, data.distance),
-    equalizer: (data) => {
-      sound?.equalizer(data);
-      sound?.reverb(data.reverb);
-      sound?.character(data.character);
-      sound?.reflection(data.reflection);
-      sound?.bass(data.bassManagement);
-    },
+    equalizer: (data) => sound?.equalizer(data),
+    reflections: (data) => sound?.reflections(data),
+    limiter: (data) => sound?.limiter(data),
     spectrum: (data) => sound?.spectrum(data.on),
   };
 

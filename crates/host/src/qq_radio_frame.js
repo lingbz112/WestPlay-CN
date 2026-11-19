@@ -72,27 +72,24 @@
   };
   const cab = {
     speakers: null,
+    cabin: null,
     head: null,
     outside: null,
     equalizer: null,
-    reverb: null,
-    character: null,
-    reflection: null,
-    bass: null,
+    reflections: null,
+    limiter: null,
     spectrum: false,
   };
   let sound = null;
   const apply = () => {
     if (!sound) return;
-    if (cab.speakers !== null) sound.speakers(cab.speakers);
+    if (cab.speakers !== null) sound.speakers(cab.speakers, cab.cabin);
     if (cab.head !== null) sound.head(cab.head);
     if (cab.outside !== null)
       sound.outside(cab.outside.on, cab.outside.distance);
     if (cab.equalizer !== null) sound.equalizer(cab.equalizer);
-    if (cab.reverb !== null) sound.reverb(cab.reverb);
-    if (cab.character !== null) sound.character(cab.character);
-    if (cab.reflection !== null) sound.reflection(cab.reflection);
-    if (cab.bass !== null) sound.bass(cab.bass);
+    if (cab.reflections !== null) sound.reflections(cab.reflections);
+    if (cab.limiter !== null) sound.limiter(cab.limiter);
     sound.spectrum(cab.spectrum);
   };
   const attach = () => {
@@ -122,13 +119,13 @@
     sound: Boolean(sound),
     speakers: cab.speakers !== null,
     head: cab.head !== null,
-    reverb: cab.reverb !== null,
   });
   const setCab = (message) => {
     switch (message.action) {
       case "speakers":
         cab.speakers = message.speakers;
-        sound?.speakers(message.speakers);
+        cab.cabin = message.cabin;
+        sound?.speakers(message.speakers, message.cabin);
         break;
       case "head":
         cab.head = message;
@@ -140,15 +137,15 @@
         break;
       case "equalizer":
         cab.equalizer = message;
-        cab.reverb = message.reverb;
-        cab.character = message.character;
-        cab.reflection = message.reflection;
-        cab.bass = message.bassManagement;
         sound?.equalizer(message);
-        sound?.reverb(message.reverb);
-        sound?.character(message.character);
-        sound?.reflection(message.reflection);
-        sound?.bass(message.bassManagement);
+        break;
+      case "reflections":
+        cab.reflections = message;
+        sound?.reflections(message);
+        break;
+      case "limiter":
+        cab.limiter = message;
+        sound?.limiter(message);
         break;
       case "spectrum":
         cab.spectrum = Boolean(message.on);

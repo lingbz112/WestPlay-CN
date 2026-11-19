@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, BassManagement, CabinCharacter, CabinReflection, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, Cabin, Equalizer, Head, Limiter, Speaker};
 use crate::webview::{self, OffscreenWebView, Stage};
 
 /// Spotify's web player.
@@ -409,6 +409,8 @@ pub struct Spotify {
 enum Cab {
     Speakers {
         speakers: Option<Vec<Speaker>>,
+        /// The cab they play in, as a room (none: the page's own default).
+        cabin: Option<Cabin>,
     },
     Head {
         #[serde(flatten)]
@@ -422,11 +424,16 @@ enum Cab {
     Equalizer {
         #[serde(flatten)]
         equalizer: Equalizer,
-        reverb: Reverb,
-        character: CabinCharacter,
-        reflection: CabinReflection,
-        #[serde(rename = "bassManagement")]
-        bass: BassManagement,
+    },
+    /// The room's early and late levels, set on their own (0 to 200 per cent each).
+    Reflections {
+        early: u8,
+        late: u8,
+    },
+    /// The low band's own limiter (200 Hz and under alone).
+    Limiter {
+        #[serde(flatten)]
+        limiter: Limiter,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays.
     Spectrum {
@@ -441,9 +448,11 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<(Equalizer, Reverb, CabinCharacter, CabinReflection, BassManagement)>,
+    equalizer: Option<Equalizer>,
+    limiter: Option<Limiter>,
+    reflections: Option<(u8, u8)>,
     spectrum: Option<bool>,
-    messages: [Option<String>; 5],
+    messages: [Option<String>; 7],
 }
 
 impl Spotify {
@@ -517,14 +526,13 @@ impl Spotify {
     pub fn cab(
         &self,
         speakers: Option<&[Speaker]>,
+        cabin: Option<Cabin>,
         head: Head,
         outside: bool,
         distance: f32,
         equalizer: Equalizer,
-        reverb: Reverb,
-        character: CabinCharacter,
-        reflection: CabinReflection,
-        bass: BassManagement,
+        limiter: Limiter,
+        reflections: (u8, u8),
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -538,7 +546,7 @@ impl Spotify {
         if told.speakers.as_ref().map(Option::as_deref) != Some(speakers) {
             let speakers = speakers.map(<[_]>::to_vec);
             told.speakers = Some(speakers.clone());
-            let message = serde_json::to_string(&Cab::Speakers { speakers }).unwrap_or_default();
+            let message = serde_json::to_string(&Cab::Speakers { speakers, cabin }).unwrap_or_default();
             told.messages[0] = Some(message.clone());
             self.view.post_json(&message)?;
         }
@@ -549,11 +557,23 @@ impl Spotify {
             told.messages[2] = Some(message.clone());
             self.view.post_json(&message)?;
         }
-        if told.equalizer != Some((equalizer, reverb, character, reflection, bass)) {
-            told.equalizer = Some((equalizer, reverb, character, reflection, bass));
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character, reflection, bass })
-                .unwrap_or_default();
+        if told.equalizer != Some(equalizer) {
+            told.equalizer = Some(equalizer);
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer }).unwrap_or_default();
             told.messages[3] = Some(message.clone());
+            self.view.post_json(&message)?;
+        }
+        if told.limiter != Some(limiter) {
+            told.limiter = Some(limiter);
+            let message = serde_json::to_string(&Cab::Limiter { limiter }).unwrap_or_default();
+            told.messages[6] = Some(message.clone());
+            self.view.post_json(&message)?;
+        }
+        if told.reflections != Some(reflections) {
+            told.reflections = Some(reflections);
+            let message = serde_json::to_string(&Cab::Reflections { early: reflections.0, late: reflections.1 })
+                .unwrap_or_default();
+            told.messages[5] = Some(message.clone());
             self.view.post_json(&message)?;
         }
         if told.spectrum != Some(spectrum) {
@@ -985,14 +1005,13 @@ mod tests {
         spotify
             .cab(
                 speakers::in_truck("scania.s_2016"),
+                None,
                 head,
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1112,14 +1131,13 @@ mod tests {
         spotify
             .cab(
                 speakers::in_truck("scania.s_2016"),
+                None,
                 head,
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();

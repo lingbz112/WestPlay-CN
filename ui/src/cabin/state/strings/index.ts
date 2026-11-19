@@ -472,6 +472,15 @@ export interface Strings {
     recommended: string
     custom: string
     equalizerFooter: string
+    /** Sound's Low Limiter: the low band's own limiter (200 Hz and under alone) and each of its settings. */
+    lowLimiter?: string
+    lowLimiterFooter?: string
+    limiterThreshold?: string
+    limiterCeiling?: string
+    limiterKnee?: string
+    limiterAttack?: string
+    limiterRelease?: string
+    limiterLookahead?: string
     low: string
     mid: string
     high: string

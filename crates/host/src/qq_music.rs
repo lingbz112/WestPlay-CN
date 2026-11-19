@@ -16,12 +16,13 @@
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 pub use crate::apple_music::Command;
-use crate::apple_music::{Answer, Playback, State};
+use crate::apple_music::{Answer, Playback, Question, State};
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, BassManagement, CabinCharacter, CabinReflection, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, Cabin, Equalizer, Head, Limiter, Speaker};
 use crate::webview::{self, HiddenWebView, Stage};
 
 /// QQ Music's home.
@@ -33,6 +34,8 @@ pub const HOME: &str = "https://y.qq.com/";
 enum Cab {
     Speakers {
         speakers: Option<Vec<Speaker>>,
+        /// The cab they play in, as a room (none: the page's own default).
+        cabin: Option<Cabin>,
     },
     Head {
         #[serde(flatten)]
@@ -45,11 +48,16 @@ enum Cab {
     Equalizer {
         #[serde(flatten)]
         equalizer: Equalizer,
-        reverb: Reverb,
-        character: CabinCharacter,
-        reflection: CabinReflection,
-        #[serde(rename = "bassManagement")]
-        bass: BassManagement,
+    },
+    /// The room's early and late levels, set on their own (0 to 200 per cent each).
+    Reflections {
+        early: u8,
+        late: u8,
+    },
+    /// The low band's own limiter (200 Hz and under alone).
+    Limiter {
+        #[serde(flatten)]
+        limiter: Limiter,
     },
     Spectrum {
         on: bool,
@@ -62,9 +70,11 @@ struct Told {
     speakers: Option<Option<Vec<Speaker>>>,
     head: Option<Head>,
     camera: Option<(bool, f32)>,
-    equalizer: Option<(Equalizer, Reverb, CabinCharacter, CabinReflection, BassManagement)>,
+    equalizer: Option<Equalizer>,
+    limiter: Option<Limiter>,
+    reflections: Option<(u8, u8)>,
     spectrum: Option<bool>,
-    messages: [Option<String>; 5],
+    messages: [Option<String>; 7],
 }
 
 /// The questions asked of the browser page, by id, until answered.
@@ -115,6 +125,11 @@ pub struct QqMusic {
     sign_in: RefCell<Option<SignInWindow>>,
     confirming: Confirming,
     pending: RefCell<Vec<Report>>,
+    /// The reports of the host's own fetches (the daily 30), sent from their threads.
+    fetched: RefCell<mpsc::Receiver<Report>>,
+    sender: mpsc::Sender<Report>,
+    /// The skills API's key, read from the page this session (only the daily 30 uses it).
+    key: RefCell<Option<String>>,
     unanswered: RefCell<Unanswered>,
     told: RefCell<Told>,
     browse_rendering: Cell<bool>,
@@ -149,12 +164,16 @@ impl QqMusic {
         ))?;
         player.navigate(HOME)?;
 
+        let (sender, fetched) = mpsc::channel();
         Ok(Self {
             browse,
             player,
             sign_in: RefCell::new(None),
             confirming: Confirming::default(),
             pending: RefCell::new(Vec::new()),
+            fetched: RefCell::new(fetched),
+            sender,
+            key: RefCell::new(None),
             unanswered: RefCell::default(),
             told: RefCell::default(),
             browse_rendering: Cell::new(true),
@@ -168,14 +187,13 @@ impl QqMusic {
     pub fn cab(
         &self,
         speakers: Option<&[Speaker]>,
+        cabin: Option<Cabin>,
         head: Head,
         outside: bool,
         distance: f32,
         equalizer: Equalizer,
-        reverb: Reverb,
-        character: CabinCharacter,
-        reflection: CabinReflection,
-        bass: BassManagement,
+        limiter: Limiter,
+        reflections: (u8, u8),
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut told = self.told.borrow_mut();
@@ -188,7 +206,7 @@ impl QqMusic {
         if told.speakers.as_ref().map(Option::as_deref) != Some(speakers) {
             let speakers = speakers.map(<[_]>::to_vec);
             told.speakers = Some(speakers.clone());
-            let message = serde_json::to_string(&Cab::Speakers { speakers }).unwrap_or_default();
+            let message = serde_json::to_string(&Cab::Speakers { speakers, cabin }).unwrap_or_default();
             told.messages[0] = Some(message.clone());
             self.player.post_json(&message)?;
         }
@@ -199,11 +217,23 @@ impl QqMusic {
             told.messages[2] = Some(message.clone());
             self.player.post_json(&message)?;
         }
-        if told.equalizer != Some((equalizer, reverb, character, reflection, bass)) {
-            told.equalizer = Some((equalizer, reverb, character, reflection, bass));
-            let message = serde_json::to_string(&Cab::Equalizer { equalizer, reverb, character, reflection, bass })
-                .unwrap_or_default();
+        if told.equalizer != Some(equalizer) {
+            told.equalizer = Some(equalizer);
+            let message = serde_json::to_string(&Cab::Equalizer { equalizer }).unwrap_or_default();
             told.messages[3] = Some(message.clone());
+            self.player.post_json(&message)?;
+        }
+        if told.limiter != Some(limiter) {
+            told.limiter = Some(limiter);
+            let message = serde_json::to_string(&Cab::Limiter { limiter }).unwrap_or_default();
+            told.messages[6] = Some(message.clone());
+            self.player.post_json(&message)?;
+        }
+        if told.reflections != Some(reflections) {
+            told.reflections = Some(reflections);
+            let message = serde_json::to_string(&Cab::Reflections { early: reflections.0, late: reflections.1 })
+                .unwrap_or_default();
+            told.messages[5] = Some(message.clone());
             self.player.post_json(&message)?;
         }
         if told.spectrum != Some(spectrum) {
@@ -230,6 +260,17 @@ impl QqMusic {
                 Ok(())
             }
             Command::Ask { id, question } => {
+                match question {
+                    Question::Daily => {
+                        self.daily_answer(*id, true);
+                        return Ok(());
+                    }
+                    Question::Collection { id: collection } if collection.as_str() == "qq:daily" => {
+                        self.daily_answer(*id, false);
+                        return Ok(());
+                    }
+                    _ => {}
+                }
                 let sent =
                     serde_json::to_string(&Command::Ask { id: *id, question: question.clone() }).unwrap_or_default();
                 self.unanswered.borrow_mut().asked(*id, sent.clone());
@@ -239,6 +280,76 @@ impl QqMusic {
             // commands, played by our <audio>, and nothing driven through the site's own player.
             _ => self.player.post_json(&serde_json::to_string(command).unwrap_or_default()),
         }
+    }
+
+    /// The daily 30's answer: its key read this session (or the key's own failure, said as `apiKey`).
+    fn daily_answer(&self, id: u32, daily: bool) {
+        let key = self.key.borrow().clone();
+        log!("[qq music] daily {id}: {}", if daily { "card" } else { "list" });
+        match key {
+            Some(key) => {
+                log!("[qq music] daily {id}: key {} chars", key.len());
+                self.fetch_daily(id, key, daily)
+            }
+            None => {
+                log!("[qq music] daily {id}: no key this session");
+                let answer = if daily {
+                    Answer {
+                        answer: id,
+                        daily: Some(crate::apple_music::Daily {
+                            item: None,
+                            tracks: Vec::new(),
+                            error: Some("apiKey".to_owned()),
+                        }),
+                        ..Answer::default()
+                    }
+                } else {
+                    Answer { answer: id, failed: true, ..Answer::default() }
+                };
+                self.pending.borrow_mut().push(Report::Answer(Box::new(answer)));
+            }
+        }
+    }
+
+    /// The daily 30 fetched off QQ Music's skills API, away from this thread: its answer comes as a report.
+    fn fetch_daily(&self, id: u32, key: String, daily: bool) {
+        let sender = self.sender.clone();
+        std::thread::spawn(move || {
+            let started = Instant::now();
+            let fetched = daily_songs(&key);
+            match &fetched {
+                Ok(collection) => log!(
+                    "[qq music] daily {id}: {} tracks, cover {}, in {:?}",
+                    collection.tracks.len(),
+                    collection.item.image.is_some(),
+                    started.elapsed()
+                ),
+                Err(error) => log!("[qq music] daily {id}: failed ({error}) in {:?}", started.elapsed()),
+            }
+            let answer = match (fetched, daily) {
+                (Ok(collection), true) => Answer {
+                    answer: id,
+                    daily: Some(crate::apple_music::Daily {
+                        item: Some(collection.item),
+                        tracks: collection.tracks,
+                        error: None,
+                    }),
+                    ..Answer::default()
+                },
+                (Ok(collection), false) => Answer { answer: id, collection: Some(collection), ..Answer::default() },
+                (Err(error), true) => Answer {
+                    answer: id,
+                    daily: Some(crate::apple_music::Daily {
+                        item: None,
+                        tracks: Vec::new(),
+                        error: Some(error.to_owned()),
+                    }),
+                    ..Answer::default()
+                },
+                (Err(_), false) => Answer { answer: id, failed: true, ..Answer::default() },
+            };
+            let _ = sender.send(Report::Answer(Box::new(answer)));
+        });
     }
 
     fn open_sign_in(&self) {
@@ -303,7 +414,11 @@ impl QqMusic {
     /// here loads again, signed in).
     pub fn take_reports(&self) -> Vec<Report> {
         self.restore_if_paused();
-        let mut reports = std::mem::take(&mut *self.pending.borrow_mut());
+        let mut reports = Vec::new();
+        while let Ok(report) = self.fetched.borrow().try_recv() {
+            reports.push(report);
+        }
+        reports.extend(std::mem::take(&mut *self.pending.borrow_mut()));
         let progress = self.sign_in.borrow().as_ref().map(SignInWindow::progress);
         if let Some(progress @ (Progress::SignedIn | Progress::Closed)) = progress {
             self.sign_in.borrow_mut().take();
@@ -356,6 +471,10 @@ impl QqMusic {
                 }
                 Some(Message::State(state)) => reports.push(Report::State(state)),
                 Some(Message::Answer(answer)) => {
+                    if let Some(key) = answer.key.clone() {
+                        log!("[qq music] key: {} chars from the skills page", key.len());
+                        *self.key.borrow_mut() = Some(key);
+                    }
                     self.unanswered.borrow_mut().answered(answer.answer);
                     reports.push(Report::Answer(answer));
                 }
@@ -381,6 +500,132 @@ impl QqMusic {
     pub fn close(self, _stage: &Stage) {
         // HiddenWebViews are not part of the composition Stage.
     }
+}
+
+/// QQ Music's daily 30 from its skills API: its card and songs, or `apiKey` / `api` (what failed).
+fn daily_songs(key: &str) -> Result<crate::apple_music::Collection, &'static str> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let client = match reqwest::blocking::Client::builder().timeout(Duration::from_secs(15)).build() {
+        Ok(client) => client,
+        Err(error) => {
+            log!("[qq music] daily: client {error}");
+            return Err("api");
+        }
+    };
+    let response = match client
+        .post("https://a.y.qq.com/discover/daily-mix")
+        .header("Authorization", format!("Bearer {key}"))
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36")
+        .body(r#"{"params":{},"comm":{"skill_version":"0.0.3"}}"#)
+        .send()
+    {
+        Ok(response) => response,
+        Err(error) => {
+            log!("[qq music] daily: request {error}");
+            return Err("api");
+        }
+    };
+    let status = response.status();
+    let body = match response.text() {
+        Ok(body) => body,
+        Err(error) => {
+            log!("[qq music] daily: body {error}");
+            return Err("api");
+        }
+    };
+    let value: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(value) => value,
+        Err(error) => {
+            log!("[qq music] daily: json {error}: {}", body.chars().take(300).collect::<String>());
+            return Err("api");
+        }
+    };
+    let ret = value.get("ret").and_then(serde_json::Value::as_i64).unwrap_or(0);
+    let msg = value.get("msg").and_then(serde_json::Value::as_str).unwrap_or("");
+    log!(
+        "[qq music] daily: http {status}, ret {ret}, msg {msg:?}, body {}",
+        body.chars().take(300).collect::<String>()
+    );
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        log!("[qq music] daily: the key was refused ({status})");
+        return Err("apiKey");
+    }
+    // The gateway's own "unauthorized" under 11534343 is its rate limit (the same key works again later).
+    if ret != 11_534_343 && msg == "unauthorized" {
+        log!("[qq music] daily: unauthorized (key)");
+        return Err("apiKey");
+    }
+    if !status.is_success() || ret != 0 {
+        log!("[qq music] daily: the service failed");
+        return Err("api");
+    }
+    let songs = match value.get("songlist").and_then(serde_json::Value::as_array) {
+        Some(songs) => songs,
+        None => {
+            log!(
+                "[qq music] daily: no songlist; top-level keys {:?}",
+                value.as_object().map(|object| object.keys().cloned().collect::<Vec<_>>())
+            );
+            return Err("api");
+        }
+    };
+    let mut tracks = Vec::with_capacity(songs.len());
+    let mut cover = None;
+    for song in songs {
+        let mid = song.get("songMid").and_then(serde_json::Value::as_str).unwrap_or("");
+        let name = song.get("songName").and_then(serde_json::Value::as_str).unwrap_or("");
+        if mid.is_empty() || name.is_empty() {
+            continue;
+        }
+        let image = song
+            .get("albumImageUrl")
+            .and_then(serde_json::Value::as_str)
+            .filter(|url| !url.is_empty())
+            .map(|url| url.replacen("http://", "https://", 1));
+        if cover.is_none() {
+            cover.clone_from(&image);
+        }
+        tracks.push(crate::apple_music::Track {
+            id: format!("qq:track:{mid}"),
+            name: name.to_owned(),
+            artist: song.get("singerName").and_then(serde_json::Value::as_str).unwrap_or("").to_owned(),
+            album: song.get("albumName").and_then(serde_json::Value::as_str).unwrap_or("").to_owned(),
+            album_id: None,
+            artist_id: None,
+            image,
+            color: "#31c27c".to_owned(),
+            duration: 0.0,
+            explicit: false,
+            number: None,
+            favorite: None,
+        });
+    }
+    if tracks.is_empty() {
+        log!("[qq music] daily: songlist had no usable songs");
+        return Err("api");
+    }
+    let item = crate::apple_music::Item {
+        id: "qq:daily".to_owned(),
+        kind: crate::apple_music::Kind::Playlist,
+        name: "每日30首".to_owned(),
+        by: String::new(),
+        note: String::new(),
+        image: cover,
+        wide: None,
+        color: "#31c27c".to_owned(),
+        explicit: false,
+        live: false,
+        label: None,
+        favorite: None,
+    };
+    Ok(crate::apple_music::Collection {
+        item,
+        description: String::new(),
+        genre: String::new(),
+        year: None,
+        tracks,
+    })
 }
 
 #[derive(Debug, PartialEq)]

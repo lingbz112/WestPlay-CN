@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::Path;
 
 use crate::signin::{self, Confirming, Progress, SignInWindow};
-use crate::speakers::{self, BassManagement, CabinCharacter, CabinReflection, Equalizer, Head, Reverb, Speaker};
+use crate::speakers::{self, Cabin, Equalizer, Head, Limiter, Speaker};
 use crate::webview::{self, OffscreenWebView, PageSize, Stage};
 
 /// What the cabin page asks of YouTube's player, or of YouTube (`youtube` in ui/src/shared/host.ts).
@@ -73,6 +73,8 @@ pub enum Command {
     /// aren't known). The host's own (speakers.rs).
     Speakers {
         speakers: Option<Vec<Speaker>>,
+        /// The cab they play in, as a room (none: the page's own default).
+        cabin: Option<Cabin>,
     },
     /// The driver's head in the cab, the sound heard from there. The host's own (the telemetry).
     Head {
@@ -90,11 +92,16 @@ pub enum Command {
     Equalizer {
         #[serde(flatten)]
         equalizer: Equalizer,
-        reverb: Reverb,
-        character: CabinCharacter,
-        reflection: CabinReflection,
-        #[serde(rename = "bassManagement")]
-        bass: BassManagement,
+    },
+    /// The low band's own limiter (200 Hz and under alone). The host's own (settings).
+    Limiter {
+        #[serde(flatten)]
+        limiter: Limiter,
+    },
+    /// The room's early and late levels, set on their own (0 to 200 per cent each).
+    Reflections {
+        early: u8,
+        late: u8,
     },
     /// The music's spectrum wanted (the cab's Equalizer open) or not: the page says it as it plays. The host's
     /// own.
@@ -211,17 +218,12 @@ impl Command {
             }
             Command::Captions { track } => track.as_deref().is_none_or(is_track_id),
             Command::Quality { quality } => quality == "auto" || QUALITIES.contains(&quality.as_str()),
-            Command::Speakers { speakers } => speakers.as_deref().is_none_or(speakers::are_sound),
+            Command::Speakers { speakers, .. } => speakers.as_deref().is_none_or(speakers::are_sound),
             Command::Rate { rate } => rate.is_finite() && (0.25..=2.0).contains(rate),
             Command::AudioTrack { id } => is_audio_track_id(id),
             Command::Head { head } => head.is_sound(),
             Command::Outside { distance, .. } => distance.is_finite() && (0.0..10_000.0).contains(distance),
-            Command::Equalizer { equalizer, reverb, reflection, bass, .. } => {
-                equalizer.clamped() == *equalizer
-                    && reverb.clamped() == *reverb
-                    && reflection.clamped() == *reflection
-                    && bass.clamped() == *bass
-            }
+            Command::Equalizer { equalizer, .. } => equalizer.clamped() == *equalizer,
             Command::Suggest { query, .. } => !query.trim().is_empty() && text(query),
             _ => true,
         }
@@ -695,7 +697,9 @@ type Told = (
     Option<Option<Vec<Speaker>>>,
     Option<Head>,
     Option<(bool, f32)>,
-    Option<(Equalizer, Reverb, CabinCharacter, CabinReflection, BassManagement)>,
+    Option<Equalizer>,
+    Option<Limiter>,
+    Option<(u8, u8)>,
     Option<bool>,
 );
 
@@ -738,7 +742,7 @@ impl YouTube {
             sign_in: RefCell::new(None),
             confirming: Confirming::default(),
             pending: RefCell::new(Vec::new()),
-            cab: RefCell::new((None, None, None, None, None)),
+            cab: RefCell::new((None, None, None, None, None, None, None)),
         })
     }
 
@@ -786,18 +790,18 @@ impl YouTube {
 
     /// The truck's speakers (none: its sound plays as it is), the driver's head and whether the camera is outside
     /// the cab, and how far (metres; 0: not known): the page is told the speakers when they change, the head when it
-    /// moves, the camera when it goes in or out or a quarter metre further, the tone when it's set, the spectrum when it's wanted.
+    /// moves, the camera when it goes in or out or a quarter metre further, the tone when it's set, the low band's
+    /// own limiter and the room's own levels on their own, and the spectrum when it's wanted.
     pub fn cab(
         &self,
         speakers: Option<&[Speaker]>,
+        cabin: Option<Cabin>,
         head: Head,
         outside: bool,
         distance: f32,
         equalizer: Equalizer,
-        reverb: Reverb,
-        character: CabinCharacter,
-        reflection: CabinReflection,
-        bass: BassManagement,
+        limiter: Limiter,
+        reflections: (u8, u8),
         spectrum: bool,
     ) -> windows::core::Result<()> {
         let mut cab = self.cab.borrow_mut();
@@ -809,19 +813,27 @@ impl YouTube {
         if cab.0.as_ref().map(Option::as_deref) != Some(speakers) {
             let speakers = speakers.map(<[_]>::to_vec);
             cab.0 = Some(speakers.clone());
-            self.pass(&Command::Speakers { speakers })?;
+            self.pass(&Command::Speakers { speakers, cabin })?;
         }
         let camera = (outside, if outside { (distance * 4.0).round() / 4.0 } else { 0.0 });
         if cab.2 != Some(camera) {
             cab.2 = Some(camera);
             self.pass(&Command::Outside { on: camera.0, distance: camera.1 })?;
         }
-        if cab.3 != Some((equalizer, reverb, character, reflection, bass)) {
-            cab.3 = Some((equalizer, reverb, character, reflection, bass));
-            self.pass(&Command::Equalizer { equalizer, reverb, character, reflection, bass })?;
+        if cab.3 != Some(equalizer) {
+            cab.3 = Some(equalizer);
+            self.pass(&Command::Equalizer { equalizer })?;
         }
-        if cab.4 != Some(spectrum) {
-            cab.4 = Some(spectrum);
+        if cab.4 != Some(limiter) {
+            cab.4 = Some(limiter);
+            self.pass(&Command::Limiter { limiter })?;
+        }
+        if cab.5 != Some(reflections) {
+            cab.5 = Some(reflections);
+            self.pass(&Command::Reflections { early: reflections.0, late: reflections.1 })?;
+        }
+        if cab.6 != Some(spectrum) {
+            cab.6 = Some(spectrum);
             self.pass(&Command::Spectrum { on: spectrum })?;
         }
         Ok(())
@@ -919,6 +931,8 @@ struct Outbox {
     head: Option<String>,
     outside: Option<String>,
     equalizer: Option<String>,
+    limiter: Option<String>,
+    reflections: Option<String>,
     spectrum: Option<String>,
 }
 
@@ -938,6 +952,8 @@ impl Outbox {
             Command::Head { .. } => self.head = Some(message.clone()),
             Command::Outside { .. } => self.outside = Some(message.clone()),
             Command::Equalizer { .. } => self.equalizer = Some(message.clone()),
+            Command::Limiter { .. } => self.limiter = Some(message.clone()),
+            Command::Reflections { .. } => self.reflections = Some(message.clone()),
             Command::Spectrum { .. } => self.spectrum = Some(message.clone()),
             _ => {}
         }
@@ -964,6 +980,8 @@ impl Outbox {
                 &self.head,
                 &self.outside,
                 &self.equalizer,
+                &self.limiter,
+                &self.reflections,
                 &self.spectrum,
                 &self.video,
             ]
@@ -1237,7 +1255,8 @@ mod tests {
     #[test]
     fn tells_the_page_the_trucks_speakers_once_and_the_head_as_it_moves() {
         let head = Head { x: 0.0, y: 0.3, z: 0.1, heading: 0.0, pitch: 0.0 };
-        let speakers = Command::Speakers { speakers: speakers::in_truck("scania.s_2016").map(<[_]>::to_vec) };
+        let speakers =
+            Command::Speakers { speakers: speakers::in_truck("scania.s_2016").map(<[_]>::to_vec), cabin: None };
         let message = serde_json::to_string(&speakers).unwrap();
         assert!(
             message.starts_with(
@@ -1251,8 +1270,8 @@ mod tests {
         );
         // A truck whose speakers aren't known: the sound as it is.
         assert_eq!(
-            serde_json::to_string(&Command::Speakers { speakers: None }).unwrap(),
-            r#"{"action":"speakers","speakers":null}"#
+            serde_json::to_string(&Command::Speakers { speakers: None, cabin: None }).unwrap(),
+            r#"{"action":"speakers","speakers":null,"cabin":null}"#
         );
         let sound = |text: &str| serde_json::from_str::<Command>(text).unwrap().is_sound();
         assert!(!sound(r#"{"action":"head","x":1e30,"y":0,"z":0,"heading":0,"pitch":0}"#));
@@ -1635,14 +1654,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.scania.s_2016"),
+                None,
                 head,
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1684,14 +1702,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.scania.s_2016"),
+                None,
                 Head { x: 0.95, y: 0.8, z: -0.2, ..head },
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1701,14 +1718,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.scania.s_2016"),
+                None,
                 Head { x: -0.95, y: 0.8, z: -0.2, ..head },
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1719,14 +1735,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.scania.s_2016"),
+                None,
                 Head { x: -0.95, y: 0.8, z: -0.2, ..head },
                 true,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1737,14 +1752,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.scania.s_2016"),
+                None,
                 Head { x: -0.95, y: 0.8, z: -0.2, ..head },
                 true,
                 20.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1754,14 +1768,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.scania.s_2016"),
+                None,
                 Head { x: -0.95, y: 0.8, z: -0.2, ..head },
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
@@ -1775,14 +1788,13 @@ mod tests {
         youtube
             .cab(
                 speakers::in_truck("vehicle.man.tgx_2020"),
+                None,
                 head,
                 false,
                 0.0,
                 Equalizer::default(),
-                Reverb::default(),
-                CabinCharacter::Full,
-                CabinReflection::default(),
-                BassManagement::default(),
+                Limiter::default(),
+                (40, 20),
                 false,
             )
             .unwrap();
